@@ -1,0 +1,2 @@
+# Name Server of Notifybear
+
