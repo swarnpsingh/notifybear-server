@@ -1,7 +1,8 @@
-from . import views
-from django.urls import path, include
+from django.urls import path
+from .views import signup, login, me
 
 urlpatterns = [
-    path('profiles/<str:username>/', views.user_profile, name='user_profile'),
-    path('profiles/', views.profiles, name="profiles"),
+    path("signup/", signup, name="signup"),
+    path("login/", login, name="login"),
+    path("me/", me, name="me"),
 ]
