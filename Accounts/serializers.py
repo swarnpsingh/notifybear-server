@@ -45,6 +45,6 @@ class UserSignupSerializer(serializers.ModelSerializer):
         user.save()
 
         # create UserProfile automatically
-        UserProfile.objects.create(user=user)
+        UserProfile.objects.get_or_create(user=user)
 
         return user
