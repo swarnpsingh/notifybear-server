@@ -30,6 +30,7 @@ class Notifications(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     
     timestamp_opened = models.DateTimeField(null=True, blank=True)
+    timestamp_dismissed = models.DateTimeField(null=True, blank=True)
 
     @property
     def reaction_time(self):

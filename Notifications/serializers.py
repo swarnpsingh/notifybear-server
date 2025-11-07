@@ -21,6 +21,7 @@ class NotificationsSerializer(serializers.ModelSerializer):
             "channel_id",
             "post_time",
             "timestamp_opened",
+            "timestamp_dismissed",
             "reaction_time",
             "title",
             "text",
