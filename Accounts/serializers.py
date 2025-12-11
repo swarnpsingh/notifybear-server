@@ -2,6 +2,10 @@ from rest_framework import serializers
 from .models import User, UserProfile
 from django.core.validators import validate_email as django_validate_email
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -66,20 +70,14 @@ class UserSignupSerializer(serializers.ModelSerializer):
     def validate_password(self, value):
         errors = []
 
-        if len(value) < 8:
-            errors.append({"code": "password_too_short", "message": "Password must be at least 8 characters."})
-
-        if not any(c.isdigit() for c in value):
-            errors.append({"code": "password_no_digit", "message": "Password must contain at least one digit."})
-
-        if not any(c.islower() for c in value):
-            errors.append({"code": "password_no_lower", "message": "Password must contain at least one lowercase letter."})
-
-        if not any(c.isupper() for c in value):
-            errors.append({"code": "password_no_upper", "message": "Password must contain at least one uppercase letter."})
-
-        if not any(not c.isalnum() for c in value):
-            errors.append({"code":"password_no_special","message":"Password should contain a special character."})
+        try:
+            validate_password(value)
+        except DjangoValidationError as e:
+            for msg in e.messages:
+                errors.append({
+                    "code": "password_invalid",
+                    "message": msg
+                })
 
         if errors:
             raise serializers.ValidationError(errors)
