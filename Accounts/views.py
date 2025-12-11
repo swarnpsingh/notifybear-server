@@ -15,7 +15,10 @@ def signup(request):
     serializer = UserSignupSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
-        return Response({"status": "success", "user": UserSerializer(user).data}, status=201)
+        refresh = RefreshToken.for_user(user)
+        return Response({"refresh": str(refresh),
+                         "access": str(refresh.access_token),
+                         "user": UserSerializer(user).data}, status=201)
     return Response(serializer.errors, status=400)
 
 
