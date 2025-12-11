@@ -38,6 +38,21 @@ class UserSignupSerializer(serializers.ModelSerializer):
         model = User
         fields = ["username", "email", "first_name", "last_name", "password"]
 
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email is already in use.")
+        return value
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username is taken.")
+        return value
+
+    def validate_password(self, value):
+        if len(value) < 6:
+            raise serializers.ValidationError("Password must be at least 6 characters long.")
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop("password")
         user = User.objects.create(**validated_data)
