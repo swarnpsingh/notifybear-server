@@ -26,9 +26,16 @@ def signup(request):
 @permission_classes([AllowAny])
 def login(request):
     email_or_username = request.data.get("username")
+    username = email_or_username
     password = request.data.get("password")
+    if "@" in email_or_username:
+        try:
+            user_obj = User.objects.get(email=email_or_username)
+            username = user_obj.username
+        except User.DoesNotExist:
+            user_obj = None
 
-    user = authenticate(username=email_or_username, password=password)
+    user = authenticate(username=username, password=password)
 
     if user is None:
         return Response({"error": "Invalid credentials"}, status=400)
