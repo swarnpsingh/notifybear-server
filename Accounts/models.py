@@ -9,6 +9,11 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.username}"
     
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+    
     @property
     def initials(self):
         a = ""
