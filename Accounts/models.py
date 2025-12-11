@@ -1,7 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-from django.db import transaction
-from django.db.models import Q
+from django.utils import timezone
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -34,3 +33,22 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s Profile"
+    
+class AuthAuditLog(models.Model):
+    EVENT_CHOICES = [
+        ("login_success", "Login success"),
+        ("login_failed", "Login failed"),
+        ("logout", "Logout"),
+        ("token_refresh", "Token refresh"),
+    ]
+
+    event = models.CharField(max_length=32, choices=EVENT_CHOICES)
+    username = models.CharField(max_length=150, blank=True, null=True)
+    user = models.ForeignKey("User", on_delete=models.SET_NULL, null=True, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    timestamp = models.DateTimeField(default=timezone.now)
+    detail = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.event} - {self.username or self.user} @ {self.ip} [{self.timestamp}]"
