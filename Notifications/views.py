@@ -229,3 +229,10 @@ def stats_range(request):
     )
 
     return Response(list(qs))
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def delete_notification(request):
+    nid = request.data.get("notification_id")
+    Notifications.objects.filter(id=nid, user=request.user).delete()
+    return Response({"ok": True})

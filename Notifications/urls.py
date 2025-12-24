@@ -10,6 +10,7 @@ from .views import (
     apps_list,
     stats_today,
     stats_range,
+    delete_notification,
 )
 
 urlpatterns = [
@@ -31,4 +32,7 @@ urlpatterns = [
 
     # New: Stats for last X days (default 7)
     path("stats/range/",permission_classes([IsAuthenticated])(stats_range),name="stats_range"),
+    
+    # New: Delete a notification
+    path("delete/",permission_classes([IsAuthenticated])(delete_notification),name="delete_notification"),
 ]
