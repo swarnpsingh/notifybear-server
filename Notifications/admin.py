@@ -54,6 +54,7 @@ class AppAdmin(admin.ModelAdmin):
         "app_label",
         "package_name",
         "notification_count",
+        "total_interactions",
         "first_seen",
         "last_seen"
     )
@@ -209,6 +210,8 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "is_read",
+        "user_link",
+        "notification_link",
         "opened_at",
         "dismissed_at",
         "ml_score",
@@ -232,7 +235,6 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         "notification_event",
         "created_at",
         "last_updated",
-        "reaction_time_display"
     )
     
     fieldsets = (
@@ -246,7 +248,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
             "fields": ("ml_score",)
         }),
         ("Metadata", {
-            "fields": ("created_at", "last_updated", "reaction_time_display"),
+            "fields": ("created_at", "last_updated"),
             "classes": ("collapse",)
         }),
     )
@@ -259,10 +261,13 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         )
         return format_html('<a href="{}">{}</a>', url, obj.user.email or obj.user.username)
     user_link.short_description = "User"
-    @admin.display(description="User")
+    @admin.display(description="Notification")
     def notification_link(self, obj):
         """Link to notification event admin page."""
-        url = reverse("admin:notifications_notificationevent_change", args=[obj.notification_event.id])
+        url = reverse(
+    f"admin:{obj.notification_event._meta.app_label}_{obj.notification_event._meta.model_name}_change",
+        args=[obj.notification_event.id]
+    )
         title = obj.notification_event.title or "No title"
         if len(title) > 40:
             title = f"{title[:40]}..."
@@ -305,7 +310,7 @@ class NotificationMessageAdmin(admin.ModelAdmin):
     list_filter = ("message_time",)
     search_fields = ("sender", "message_text", "notification_event__title")
     readonly_fields = ("notification_event", "sender", "message_text", "message_time")
-    
+    @admin.display(description="NotificationMessage")
     def message_preview(self, obj):
         """Show truncated message text."""
         if obj.message_text and len(obj.message_text) > 50:
@@ -322,9 +327,9 @@ class NotificationMessageAdmin(admin.ModelAdmin):
 class InteractionEventAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "interaction_type",
         "user_link",
         "app_name",
-        "interaction_type",
         "timestamp",
         "raw_reason",
         "created_at"
@@ -370,7 +375,7 @@ class InteractionEventAdmin(admin.ModelAdmin):
         Prevent deleting interaction events (append-only).
         """
         return request.user.is_superuser  # Only superusers can delete
-    
+    @admin.display(description="InteractionEvent")
     def user_link(self, obj):
         """Link to user admin page."""
         url = reverse(
@@ -379,7 +384,7 @@ class InteractionEventAdmin(admin.ModelAdmin):
         )
         return format_html('<a href="{}">{}</a>', url, obj.user.email or obj.user.username)
     user_link.short_description = "User"
-    
+    @admin.display(description="InteractionEvent")
     def app_name(self, obj):
         """Display app name."""
         return obj.notification_event.app.app_label or obj.notification_event.app.package_name
@@ -405,14 +410,14 @@ class DailyAggregateAdmin(admin.ModelAdmin):
     )
     list_filter = ("day", "user", "app__package_name")
     search_fields = ("app__package_name", "app__app_label", "user__email")
-    readonly_fields = ("last_updated", "open_rate_display")
+    readonly_fields = ("last_updated")
     
     fieldsets = (
         ("Identity", {
             "fields": ("user", "app", "day")
         }),
         ("Metrics", {
-            "fields": ("posts", "clicks", "swipes", "open_rate", "open_rate_display")
+            "fields": ("posts", "clicks", "swipes", "open_rate")
         }),
         ("Metadata", {
             "fields": ("last_updated",)
