@@ -67,42 +67,42 @@ def get_user_notifications(request):
     return Response(serializer.data)
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def upload_notification(request):
-    """
-    Legacy endpoint - creates notification event and user state.
-    Consider migrating clients to use ingest_notification instead.
-    """
-    serializer = IngestNotificationSerializer(data=request.data)
-    if serializer.is_valid():
-        v = serializer.validated_data
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def upload_notification(request):
+#     """
+#     Legacy endpoint - creates notification event and user state.
+#     Consider migrating clients to use ingest_notification instead.
+#     """
+#     serializer = IngestNotificationSerializer(data=request.data)
+#     if serializer.is_valid():
+#         v = serializer.validated_data
         
-        # Get or create app
-        app = _get_or_create_app(
-            request.user,
-            v["package_name"],
-            v.get("app_label", "")
-        )
+#         # Get or create app
+#         app = _get_or_create_app(
+#             request.user,
+#             v["package_name"],
+#             v.get("app_label", "")
+#         )
         
-        # Create notification event
-        notif_event = NotificationEvent.objects.create(
-            app=app,
-            notif_key=v.get("notif_key", f"legacy_{timezone.now().timestamp()}"),
-            title=v.get("title", ""),
-            text=v.get("text", ""),
-            post_time=v.get("posted_at", timezone.now())
-        )
+#         # Create notification event
+#         notif_event = NotificationEvent.objects.create(
+#             app=app,
+#             notif_key=v.get("notif_key", f"legacy_{timezone.now().timestamp()}"),
+#             title=v.get("title", ""),
+#             text=v.get("text", ""),
+#             post_time=v.get("posted_at", timezone.now())
+#         )
         
-        # Create user state
-        UserNotificationState.objects.create(
-            user=request.user,
-            notification_event=notif_event
-        )
+#         # Create user state
+#         UserNotificationState.objects.create(
+#             user=request.user,
+#             notification_event=notif_event
+#         )
         
-        return Response({"status": "success"}, status=status.HTTP_201_CREATED)
+#         return Response({"status": "success"}, status=status.HTTP_201_CREATED)
     
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # -------------------------
