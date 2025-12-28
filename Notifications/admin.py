@@ -59,7 +59,7 @@ class AppAdmin(admin.ModelAdmin):
     )
     list_filter = ("first_seen", "last_seen", "user")
     search_fields = ("app_label", "package_name", "user__email", "user__username")
-    readonly_fields = ("first_seen", "last_seen", "total_interactions")
+    readonly_fields = ("first_seen", "last_seen")
     
     fieldsets = (
         ("App Information", {
