@@ -162,7 +162,7 @@ def ingest_notification(request):
 
     if created:
         # Create user state for new notification
-        UserNotificationState.objects.create(
+        UserNotificationState.objects.get_or_create(
             user=request.user,
             notification_event=notif_event
         )
