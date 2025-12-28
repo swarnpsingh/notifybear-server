@@ -251,7 +251,8 @@ class InteractionEvent(models.Model):
     notification_event = models.ForeignKey(
         NotificationEvent,
         on_delete=models.CASCADE,
-        related_name="interaction_events"
+        related_name="interaction_events",
+        default=None
     )
     
     # Interaction details
