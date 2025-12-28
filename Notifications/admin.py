@@ -168,7 +168,10 @@ class NotificationEventAdmin(admin.ModelAdmin):
     
     def app_link(self, obj):
         """Link to the app admin page."""
-        url = reverse("admin:Notifications_app_change", args=[obj.app.id])
+        url = reverse(
+            f"admin:{obj.app._meta.app_label}_{obj.app._meta.model_name}_change",
+            args=[obj.app.id]
+        )
         return format_html('<a href="{}">{}</a>', url, obj.app.app_label or obj.app.package_name)
     app_link.short_description = "App"
     
@@ -422,7 +425,10 @@ class DailyAggregateAdmin(admin.ModelAdmin):
     
     def app_link(self, obj):
         """Link to app admin page."""
-        url = reverse("admin:Notifications_app_change", args=[obj.app.id])
+        url = reverse(
+            f"admin:{obj.app._meta.app_label}_{obj.app._meta.model_name}_change",
+            args=[obj.app.id]
+        )
         return format_html('<a href="{}">{}</a>', url, obj.app.app_label or obj.app.package_name)
     app_link.short_description = "App"
     
