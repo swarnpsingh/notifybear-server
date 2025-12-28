@@ -69,7 +69,7 @@ class AppAdmin(admin.ModelAdmin):
             "fields": ("first_seen", "last_seen")
         }),
         ("Statistics", {
-            "fields": ("notification_count", "total_interactions"),
+            "fields": (),
             "classes": ("collapse",)
         }),
     )
@@ -208,14 +208,10 @@ class NotificationEventAdmin(admin.ModelAdmin):
 class UserNotificationStateAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "user_link",
-        "notification_link",
-        "app_name",
         "is_read",
         "opened_at",
         "dismissed_at",
         "ml_score",
-        "reaction_time_display"
     )
     list_filter = (
         "is_read",
@@ -254,13 +250,16 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
-    
+    @admin.display(description="User")
     def user_link(self, obj):
         """Link to user admin page."""
-        url = reverse("admin:auth_user_change", args=[obj.user.id])
+        url = reverse(
+            f"admin:{obj.user._meta.app_label}_{obj.user._meta.model_name}_change",
+            args=[obj.user.id]
+        )
         return format_html('<a href="{}">{}</a>', url, obj.user.email or obj.user.username)
     user_link.short_description = "User"
-    
+    @admin.display(description="User")
     def notification_link(self, obj):
         """Link to notification event admin page."""
         url = reverse("admin:notifications_notificationevent_change", args=[obj.notification_event.id])
@@ -269,12 +268,12 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
             title = f"{title[:40]}..."
         return format_html('<a href="{}">{}</a>', url, title)
     notification_link.short_description = "Notification"
-    
+    @admin.display(description="User")
     def app_name(self, obj):
         """Display app name."""
         return obj.notification_event.app.app_label or obj.notification_event.app.package_name
     app_name.short_description = "App"
-    
+    @admin.display(description="User")
     def reaction_time_display(self, obj):
         """Display reaction time in human-readable format."""
         rt = obj.reaction_time
@@ -374,7 +373,10 @@ class InteractionEventAdmin(admin.ModelAdmin):
     
     def user_link(self, obj):
         """Link to user admin page."""
-        url = reverse("admin:auth_user_change", args=[obj.user.id])
+        url = reverse(
+            f"admin:{obj.user._meta.app_label}_{obj.user._meta.model_name}_change",
+            args=[obj.user.id]
+        )
         return format_html('<a href="{}">{}</a>', url, obj.user.email or obj.user.username)
     user_link.short_description = "User"
     
@@ -419,7 +421,10 @@ class DailyAggregateAdmin(admin.ModelAdmin):
     
     def user_link(self, obj):
         """Link to user admin page."""
-        url = reverse("admin:auth_user_change", args=[obj.user.id])
+        url = reverse(
+            f"admin:{obj.user._meta.app_label}_{obj.user._meta.model_name}_change",
+            args=[obj.user.id]
+        )
         return format_html('<a href="{}">{}</a>', url, obj.user.email or obj.user.username)
     user_link.short_description = "User"
     
