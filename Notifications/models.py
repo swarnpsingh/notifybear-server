@@ -126,7 +126,8 @@ class NotificationMessage(models.Model):
     notification_event = models.ForeignKey(
         NotificationEvent,
         on_delete=models.CASCADE,
-        related_name="messages"
+        related_name="messages",
+        default=None
     )
     
     sender = models.CharField(max_length=200, null=True, blank=True)
@@ -161,7 +162,8 @@ class UserNotificationState(models.Model):
     notification_event = models.ForeignKey(
         NotificationEvent,
         on_delete=models.CASCADE,
-        related_name="user_states"
+        related_name="user_states",
+        default=None
     )
     
     # User interaction timestamps (mutable)
