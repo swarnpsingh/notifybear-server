@@ -273,12 +273,12 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
             title = f"{title[:40]}..."
         return format_html('<a href="{}">{}</a>', url, title)
     notification_link.short_description = "Notification"
-    @admin.display(description="User")
+    @admin.display(description="App")
     def app_name(self, obj):
         """Display app name."""
         return obj.notification_event.app.app_label or obj.notification_event.app.package_name
     app_name.short_description = "App"
-    @admin.display(description="User")
+    @admin.display(description="Reaction Time")
     def reaction_time_display(self, obj):
         """Display reaction time in human-readable format."""
         rt = obj.reaction_time
