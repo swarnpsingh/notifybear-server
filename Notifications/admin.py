@@ -59,7 +59,7 @@ class AppAdmin(admin.ModelAdmin):
     )
     list_filter = ("first_seen", "last_seen", "user")
     search_fields = ("app_label", "package_name", "user__email", "user__username")
-    readonly_fields = ("first_seen", "last_seen", "notification_count", "total_interactions")
+    readonly_fields = ("first_seen", "last_seen", "total_interactions")
     
     fieldsets = (
         ("App Information", {
@@ -77,7 +77,9 @@ class AppAdmin(admin.ModelAdmin):
     def notification_count(self, obj):
         """Count of notifications from this app."""
         count = obj.notification_events.count()
-        url = reverse("admin:notifications_notificationevent_changelist") + f"?app__id__exact={obj.id}"
+        url = reverse(
+            f"admin:{NotificationEvent._meta.app_label}_{NotificationEvent._meta.model_name}_changelist"
+        ) + f"?app__id__exact={obj.id}"
         return format_html('<a href="{}">{} notifications</a>', url, count)
     notification_count.short_description = "Notifications"
     
