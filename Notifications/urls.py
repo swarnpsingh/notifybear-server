@@ -13,6 +13,7 @@ from .views import (
     mark_notification_opened,
     mark_notification_dismissed,
     unread_count,
+    update_notification_state,
 )
 
 urlpatterns = [
@@ -81,4 +82,5 @@ urlpatterns = [
         permission_classes([IsAuthenticated])(unread_count),
         name="unread_count"
     ),
+    path("update_state/", update_notification_state),
 ]
