@@ -27,6 +27,18 @@ from .serializers import (
 # -------------------------
 # Helper function (internal)
 # -------------------------
+import hashlib
+
+def compute_hash(v):
+    parts = [
+        v.get("title", ""),
+        v.get("text", ""),
+        v.get("big_text", ""),
+        v.get("sub_text", ""),
+        v.get("summary_text", ""),
+    ]
+    s = "|".join(str(p) for p in parts)
+    return hashlib.sha256(s.encode()).hexdigest()
 
 def _get_or_create_app(user, package_name, app_label=""):
     """Ensures an App entry exists for the user + package."""
@@ -112,22 +124,6 @@ def get_user_notifications(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def ingest_notification(request):
-    """
-    Android → Server
-    Creates immutable NotificationEvent and UserNotificationState.
-    
-    Payload:
-    {
-        "package_name": "com.whatsapp",
-        "app_label": "WhatsApp",
-        "notif_key": "0|com.whatsapp|12345",
-        "posted_at": "2025-11-12T12:34:56Z",
-        "title": "New message",
-        "text": "Hey!",
-        "big_text": "...",
-        "channel_id": "messages"
-    }
-    """
     s = IngestNotificationSerializer(data=request.data)
     s.is_valid(raise_exception=True)
     v = s.validated_data
@@ -156,20 +152,31 @@ def ingest_notification(request):
             "text": v.get("text", ""),
             "big_text": v.get("big_text", ""),
             "sub_text": v.get("sub_text", ""),
+            "summary_text": v.get("summary_text", ""),
+            "info_text": v.get("info_text", ""),
+            "text_lines": v.get("text_lines", ""),
             "channel_id": v.get("channel_id", ""),
+            "conversation_title": v.get("conversation_title", ""),
+            "people": v.get("people"),
+            "large_icon_base64": v.get("large_icon_base64"),
+            "picture_base64": v.get("picture_base64"),
+            "content_hash": compute_hash(v),
         }
     )
 
-    if created:
-        # Create user state for new notification
-        UserNotificationState.objects.get_or_create(
-            user=request.user,
-            notification_event=notif_event
-        )
-        return Response({"ok": True, "created": True}, status=status.HTTP_201_CREATED)
-    else:
-        # Notification already exists
-        return Response({"ok": True, "created": False}, status=status.HTTP_200_OK)
+    state, _ = UserNotificationState.objects.get_or_create(
+        user=request.user,
+        notification_event=notif_event
+    )
+
+    return Response(
+        {
+            "ok": True,
+            "created": created,
+            "state_id": state.id
+        },
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    )
 
 
 # -------------------------
@@ -419,3 +426,22 @@ def unread_count(request):
     ).count()
     
     return Response({"unread_count": count})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_notification_state(request):
+    state_id = request.data.get("state_id")
+    ml_score = request.data.get("ml_score")
+
+    if state_id is None or ml_score is None:
+        return Response({"error": "state_id and ml_score required"}, status=400)
+
+    try:
+        state = UserNotificationState.objects.get(id=state_id, user=request.user)
+    except UserNotificationState.DoesNotExist:
+        return Response({"error": "Invalid state"}, status=404)
+    if state.ml_score != ml_score:
+        state.ml_score = ml_score
+        state.save(update_fields=["ml_score"])
+
+    return Response({"ok": True})
