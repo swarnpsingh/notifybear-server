@@ -410,7 +410,7 @@ class DailyAggregateAdmin(admin.ModelAdmin):
     )
     list_filter = ("day", "user", "app__package_name")
     search_fields = ("app__package_name", "app__app_label", "user__email")
-    readonly_fields = ("last_updated")
+    readonly_fields = ("last_updated",)
     
     fieldsets = (
         ("Identity", {
