@@ -431,7 +431,11 @@ def unread_count(request):
 @permission_classes([IsAuthenticated])
 def update_notification_state(request):
     state_id = request.data.get("state_id")
-    ml_score = request.data.get("ml_score")
+    try:
+        ml_score = int(request.data.get("ml_score"))
+    except (TypeError, ValueError):
+        return Response({"error": "ml_score must be integer"}, status=400)
+
 
     if state_id is None or ml_score is None:
         return Response({"error": "state_id and ml_score required"}, status=400)
