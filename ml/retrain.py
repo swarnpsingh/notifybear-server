@@ -1,106 +1,423 @@
-# ml/retrain.py
+"""
+Model retraining with intelligent synthetic/real data mixing.
+
+Key changes:
+- Uses observed labels (not engineered rules)
+- Synthetic data is minimal and phased out
+- Real data weighted 2x higher than synthetic
+- Smart threshold-based mixing strategy
+"""
 
 import random
-from Notifications.models import NotificationEvent
-from ml.synthetic import generate_synthetic_for_apps
+import logging
+from django.db.models import Count, Q
+from django.utils import timezone
+
+from Notifications.models import NotificationEvent, UserNotificationState
+from ml.labels import ObservedLabeler
+from ml.features import FeatureExtractor
+from ml.synthetic import SyntheticDataGenerator
 from ml.model import UserNotificationModel
-import tempfile
 
-URGENT_WORDS = ["otp", "urgent", "verify", "code"]
-PROMO_WORDS = ["sale", "offer", "discount"]
-HIGH_REACTION_THRESHOLD = 30  # seconds
+logger = logging.getLogger(__name__)
 
 
-from django.db.models import Avg
+class ModelRetrainer:
+    """
+    Handles intelligent model retraining for users.
+    """
+    
+    # Thresholds for mixing strategy
+    THRESHOLD_PURE_REAL = 100  # Use only real data if we have this many
+    THRESHOLD_MIXED = 50       # Start mixing if we have this many
+    THRESHOLD_COLD_START = 20  # Below this, mostly synthetic
+    
+    @staticmethod
+    def should_retrain(user):
+        """
+        Determine if we should retrain the model for this user.
+        
+        Returns:
+            tuple: (should_retrain: bool, reason: str)
+        """
+        # Count labeled interactions (where user actually did something)
+        labeled_count = UserNotificationState.objects.filter(
+            Q(user=user) & (Q(opened_at__isnull=False) | Q(dismissed_at__isnull=False))
+        ).count()
+        
+        if labeled_count == 0:
+            return False, "No labeled interactions yet"
+        
+        # Check if user has minimum data
+        if labeled_count < ModelRetrainer.THRESHOLD_COLD_START:
+            return False, f"Only {labeled_count} interactions (need {ModelRetrainer.THRESHOLD_COLD_START}+)"
+        
+        # Retrain at key milestones
+        if labeled_count in [20, 50, 100, 200, 500, 1000]:
+            return True, f"Milestone: {labeled_count} interactions"
+        
+        # Retrain every 100 interactions after 1000
+        if labeled_count >= 1000 and labeled_count % 100 == 0:
+            return True, f"Periodic retrain: {labeled_count} interactions"
+        
+        return False, "No retrain needed"
+    
+    @staticmethod
+    def build_dataset(user, target_size=500):
+        """
+        Build training dataset with smart real/synthetic mixing.
+        
+        Strategy:
+        - >= 100 labeled: Pure real data (no synthetic)
+        - 50-99 labeled: Real data (2x weight) + minimal synthetic
+        - 20-49 labeled: Real data + moderate synthetic
+        - < 20 labeled: Don't train yet (return None)
+        
+        Args:
+            user: User instance
+            target_size: Target dataset size (default 500)
+        
+        Returns:
+            list of (features, engagement_score) tuples, or None if insufficient data
+        """
+        logger.info(f"Building dataset for user {user.id}")
+        
+        # Get user's apps
+        user_apps = list(
+            NotificationEvent.objects.filter(
+                app__user=user
+            ).values_list('app__package_name', flat=True).distinct()
+        )
+        
+        if not user_apps:
+            logger.warning(f"User {user.id} has no notifications")
+            return None
+        
+        # === Extract LABELED real data ===
+        real_data = []
+        
+        # Get notifications with interactions
+        notifications = NotificationEvent.objects.filter(
+            app__user=user
+        ).select_related('app').prefetch_related('user_states').order_by('-post_time')
+        
+        for notif in notifications:
+            # Only use if we can generate a label from behavior
+            if ObservedLabeler.can_be_labeled(notif, user):
+                try:
+                    features = FeatureExtractor.extract(notif, user)
+                    engagement_score = ObservedLabeler.label_from_behavior(notif, user)
+                    
+                    if engagement_score is not None:
+                        real_data.append((features, engagement_score))
+                
+                except Exception as e:
+                    logger.error(f"Failed to extract features for notification {notif.id}: {e}")
+                    continue
+        
+        logger.info(f"Extracted {len(real_data)} labeled real samples for user {user.id}")
+        
+        # Analyze real data quality
+        if real_data:
+            real_labels = [label for _, label in real_data]
+            import numpy as np
+            label_array = np.array(real_labels)
+            logger.info(f"Real data label distribution: mean={label_array.mean():.3f}, std={label_array.std():.3f}")
+            
+            if label_array.std() < 0.1:
+                logger.warning(f"Low label variance for user {user.id} - user behavior is very consistent")
+        
+        # === Decide on mixing strategy ===
+        
+        if len(real_data) >= ModelRetrainer.THRESHOLD_PURE_REAL:
+            # Strategy 1: Pure real data (BEST CASE)
+            logger.info(f"Using PURE REAL data for user {user.id} ({len(real_data)} samples)")
+            
+            random.shuffle(real_data)
+            dataset = real_data[:target_size]
+            
+            return dataset
+        
+        elif len(real_data) >= ModelRetrainer.THRESHOLD_MIXED:
+            # Strategy 2: Real data (2x weight) + minimal synthetic
+            logger.info(f"Using MIXED data for user {user.id} ({len(real_data)} real samples)")
+            
+            # Weight real data 2x by duplicating
+            weighted_real = real_data * 2
+            
+            # Add minimal synthetic to reach target
+            synthetic_needed = max(0, target_size - len(weighted_real))
+            synthetic_needed = min(synthetic_needed, 100)  # Cap at 100 synthetic
+            
+            if synthetic_needed > 0:
+                synthetic = SyntheticDataGenerator.generate_for_cold_start(
+                    apps=user_apps,
+                    n=synthetic_needed
+                )
+            else:
+                synthetic = []
+            
+            dataset = weighted_real + synthetic
+            random.shuffle(dataset)
+            
+            logger.info(f"Mixed dataset: {len(real_data)} real (2x weight = {len(weighted_real)}) + {len(synthetic)} synthetic")
+            
+            return dataset[:target_size]
+        
+        elif len(real_data) >= ModelRetrainer.THRESHOLD_COLD_START:
+            # Strategy 3: Real data + moderate synthetic (COLD START)
+            logger.info(f"Using COLD START mix for user {user.id} ({len(real_data)} real samples)")
+            
+            # Calculate how much synthetic we need
+            synthetic_needed = max(200, target_size - len(real_data))
+            
+            synthetic = SyntheticDataGenerator.generate_for_cold_start(
+                apps=user_apps,
+                n=synthetic_needed
+            )
+            
+            dataset = real_data + synthetic
+            random.shuffle(dataset)
+            
+            logger.info(f"Cold start dataset: {len(real_data)} real + {len(synthetic)} synthetic")
+            
+            return dataset[:target_size]
+        
+        else:
+            # Too little data to train
+            logger.warning(f"Insufficient data for user {user.id} ({len(real_data)} samples, need {ModelRetrainer.THRESHOLD_COLD_START}+)")
+            return None
+    
+    @staticmethod
+    def train_model(user, model_type='ridge', target_size=500, validate=True):
+        """
+        Train a model for a user.
+        
+        Args:
+            user: User instance
+            model_type: 'ridge' or 'gbm'
+            target_size: Target dataset size
+            validate: Whether to perform validation
+        
+        Returns:
+            tuple: (model, metrics) or (None, None) if training fails
+        """
+        logger.info(f"Training model for user {user.id}")
+        
+        # Build dataset
+        dataset = ModelRetrainer.build_dataset(user, target_size=target_size)
+        
+        if dataset is None or len(dataset) == 0:
+            logger.error(f"Cannot train model for user {user.id}: insufficient data")
+            return None, None
+        
+        # Analyze dataset composition
+        real_count = sum(1 for features, label in dataset 
+                        if features.get('app_open_rate', 0.5) != 0.5)  # Heuristic: real data has non-default stats
+        synthetic_count = len(dataset) - real_count
+        
+        logger.info(f"Training on {len(dataset)} samples (~{real_count} real, ~{synthetic_count} synthetic)")
+        
+        # Choose model type based on data size
+        if len(dataset) < 200:
+            model_type = 'ridge'  # Force ridge for small datasets
+            logger.info("Using Ridge (dataset too small for GBM)")
+        
+        # Train model
+        try:
+            model = UserNotificationModel(model_type=model_type)
+            metrics = model.train(dataset, validate=validate)
+            
+            logger.info(f"Model trained for user {user.id}: {metrics}")
+            
+            return model, metrics
+        
+        except Exception as e:
+            logger.error(f"Training failed for user {user.id}: {e}", exc_info=True)
+            return None, None
+    
+    @staticmethod
+    def evaluate_on_recent_data(model, user, n_recent=50):
+        """
+        Evaluate model on recent unseen notifications (sanity check).
+        
+        Args:
+            model: Trained UserNotificationModel
+            user: User instance
+            n_recent: Number of recent notifications to test on
+        
+        Returns:
+            dict: Evaluation metrics
+        """
+        if model is None:
+            return {"error": "No model provided"}
+        
+        # Get recent notifications
+        recent_notifs = NotificationEvent.objects.filter(
+            app__user=user
+        ).select_related('app').prefetch_related('user_states').order_by('-post_time')[:n_recent]
+        
+        # Build test data
+        test_data = []
+        for notif in recent_notifs:
+            if ObservedLabeler.can_be_labeled(notif, user):
+                try:
+                    features = FeatureExtractor.extract(notif, user)
+                    true_label = ObservedLabeler.label_from_behavior(notif, user)
+                    
+                    if true_label is not None:
+                        test_data.append((features, true_label))
+                except Exception as e:
+                    logger.error(f"Evaluation failed for notification {notif.id}: {e}")
+        
+        if not test_data:
+            return {"error": "No test data available"}
+        
+        # Evaluate
+        from ml.model import ModelEvaluator
+        metrics = ModelEvaluator.evaluate(model, test_data)
+        
+        logger.info(f"Recent data evaluation for user {user.id}: {metrics}")
+        
+        return metrics
+    
+    @staticmethod
+    def get_training_stats(user):
+        """
+        Get statistics about available training data for a user.
+        
+        Returns:
+            dict: Training data statistics
+        """
+        # Total notifications
+        total_notifs = NotificationEvent.objects.filter(app__user=user).count()
+        
+        # Labeled notifications (user interacted)
+        labeled_notifs = NotificationEvent.objects.filter(
+            app__user=user,
+            user_states__user=user
+        ).filter(
+            Q(user_states__opened_at__isnull=False) | 
+            Q(user_states__dismissed_at__isnull=False)
+        ).distinct().count()
+        
+        # Opened notifications
+        opened_notifs = NotificationEvent.objects.filter(
+            app__user=user,
+            user_states__user=user,
+            user_states__opened_at__isnull=False
+        ).distinct().count()
+        
+        # Dismissed notifications
+        dismissed_notifs = NotificationEvent.objects.filter(
+            app__user=user,
+            user_states__user=user,
+            user_states__dismissed_at__isnull=False,
+            user_states__opened_at__isnull=True  # Dismissed WITHOUT opening
+        ).distinct().count()
+        
+        # Calculate rates
+        label_rate = labeled_notifs / total_notifs if total_notifs > 0 else 0
+        open_rate = opened_notifs / labeled_notifs if labeled_notifs > 0 else 0
+        
+        # Determine readiness
+        should_train, reason = ModelRetrainer.should_retrain(user)
+        
+        return {
+            "total_notifications": total_notifs,
+            "labeled_notifications": labeled_notifs,
+            "opened_notifications": opened_notifs,
+            "dismissed_notifications": dismissed_notifs,
+            "label_rate": label_rate,
+            "open_rate": open_rate,
+            "should_train": should_train,
+            "train_reason": reason,
+        }
 
 
-def extract_features_and_label(n):
-    text = ((n.title or "") + " " + (n.text or "")).lower()
-
-    features = {
-        "app": n.app.package_name,
-        "hour": n.post_time.hour,
-        "has_urgent": int(any(w in text for w in URGENT_WORDS)),
-        "has_promo": int(any(w in text for w in PROMO_WORDS)),
-    }
-
-    state = n.user_states.first()
-    if not state:
-        return None
-
-    score = 0
-
-    # --- Behavioral ---
-    if state.opened_at:
-        score += 2
-        reaction = (state.opened_at - n.post_time).total_seconds()
-        if reaction <= 30:
-            score += 1
-
-    if state.dismissed_at:
-        score -= 1
-
-    # --- App-level behavior ---
-    app_open_rate = n.app.daily_aggregates.aggregate(avg=Avg("open_rate"))["avg"] or 0
-    if app_open_rate > 0.5:
-        score += 1
-
-    # --- Semantic ---
-    if features["has_urgent"]:
-        score += 1
-    if features["has_promo"]:
-        score -= 1
-
-    # --- Time context ---
-    if n.post_time.hour < 7 or n.post_time.hour > 22:
-        score -= 0.5
-
-    # --- Bucket ---
-    if score <= 0:
-        label = 0
-    elif score <= 2:
-        label = 1
-    else:
-        label = 2
-
-    return features, label
-
-
-
-def build_dataset_for_user(user, apps, total=1000):
-    qs = NotificationEvent.objects.filter(app__user=user).order_by("-post_time")
-
-    real_data = []
-    for n in qs:
-        item = extract_features_and_label(n)
-        if item:
-            real_data.append(item)
-
-    random.shuffle(real_data)
-
-    if len(real_data) >= total:
-        dataset = real_data[:total]
-    else:
-        remaining = total - len(real_data)
-        synthetic = generate_synthetic_for_apps(apps, n=remaining)
-        dataset = real_data + synthetic
-
-    random.shuffle(dataset)
-    return dataset
-
-
-def retrain_model_for_user(user, apps, total=1000):
-    dataset = build_dataset_for_user(user, apps, total=total)
-
-    if not dataset:
-        dataset = generate_synthetic_for_apps(apps, n=total)
-
-    model = UserNotificationModel()
-    model.train(dataset)
-
-    #path = f"models/user_{user.id}.joblib"
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".joblib")
-    model.save_onnx(tmp.name)
-    tmp.close()
-
-    return tmp.name
+class DatasetAnalyzer:
+    """
+    Analyze dataset quality for debugging.
+    """
+    
+    @staticmethod
+    def analyze_dataset(dataset):
+        """
+        Analyze a training dataset.
+        
+        Returns:
+            dict: Dataset statistics
+        """
+        import numpy as np
+        
+        if not dataset:
+            return {"error": "Empty dataset"}
+        
+        labels = np.array([label for _, label in dataset])
+        
+        # Feature analysis
+        feature_keys = set()
+        for features, _ in dataset:
+            feature_keys.update(features.keys())
+        
+        # App distribution
+        apps = [features.get('app', 'unknown') for features, _ in dataset]
+        from collections import Counter
+        app_counts = Counter(apps)
+        
+        return {
+            "size": len(dataset),
+            "num_features": len(feature_keys),
+            "label_stats": {
+                "mean": float(labels.mean()),
+                "std": float(labels.std()),
+                "min": float(labels.min()),
+                "max": float(labels.max()),
+                "median": float(np.median(labels)),
+            },
+            "engagement_distribution": {
+                "high (>=0.7)": float((labels >= 0.7).mean()),
+                "medium (0.4-0.7)": float(((labels >= 0.4) & (labels < 0.7)).mean()),
+                "low (<0.4)": float((labels < 0.4).mean()),
+            },
+            "top_apps": dict(app_counts.most_common(10)),
+        }
+    
+    @staticmethod
+    def compare_synthetic_vs_real(user):
+        """
+        Compare synthetic data distribution to user's real data.
+        
+        Returns:
+            dict: Comparison statistics
+        """
+        # Get real data
+        real_dataset = []
+        notifications = NotificationEvent.objects.filter(
+            app__user=user
+        ).select_related('app').prefetch_related('user_states')[:100]
+        
+        for notif in notifications:
+            if ObservedLabeler.can_be_labeled(notif, user):
+                features = FeatureExtractor.extract(notif, user)
+                label = ObservedLabeler.label_from_behavior(notif, user)
+                if label is not None:
+                    real_dataset.append((features, label))
+        
+        # Generate synthetic data
+        user_apps = list(set(f['app'] for f, _ in real_dataset))
+        synthetic_dataset = SyntheticDataGenerator.generate_for_cold_start(
+            apps=user_apps if user_apps else None,
+            n=100
+        )
+        
+        # Analyze both
+        real_stats = DatasetAnalyzer.analyze_dataset(real_dataset)
+        synthetic_stats = DatasetAnalyzer.analyze_dataset(synthetic_dataset)
+        
+        return {
+            "real": real_stats,
+            "synthetic": synthetic_stats,
+            "label_mean_diff": abs(real_stats["label_stats"]["mean"] - synthetic_stats["label_stats"]["mean"]),
+            "label_std_diff": abs(real_stats["label_stats"]["std"] - synthetic_stats["label_stats"]["std"]),
+        }
