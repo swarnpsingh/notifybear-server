@@ -63,20 +63,41 @@ def _get_or_create_app(user, package_name, app_label=""):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_user_notifications(request):
-    """
-    Returns all notifications for the user with their interaction state.
-    Ordered by most recent first.
-    """
-    # Get user notification states with related data
-    states = UserNotificationState.objects.filter(
-        user=request.user
-    ).select_related(
-        'notification_event',
-        'notification_event__app'
-    ).order_by('-notification_event__post_time')
+    user = request.user
+
+    limit = int(request.GET.get("limit", 20))
+    offset = int(request.GET.get("offset", 0))
+
+    qs = UserNotificationState.objects.filter(user=user)\
+        .select_related("notification_event", "notification_event__app")\
+        .order_by("-notification_event__post_time")
+
+    total = qs.count()
+    states = qs[offset:offset + limit]
+
+    data = UserNotificationStateSerializer(states, many=True).data
+
+    return Response({
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "results": data
+    })
+# def get_user_notifications(request):
+#     """
+#     Returns all notifications for the user with their interaction state.
+#     Ordered by most recent first.
+#     """
+#     # Get user notification states with related data
+#     states = UserNotificationState.objects.filter(
+#         user=request.user
+#     ).select_related(
+#         'notification_event',
+#         'notification_event__app'
+#     ).order_by('-notification_event__post_time')
     
-    serializer = UserNotificationStateSerializer(states, many=True)
-    return Response(serializer.data)
+#     serializer = UserNotificationStateSerializer(states, many=True)
+#     return Response(serializer.data)
 
 
 # @api_view(["POST"])
