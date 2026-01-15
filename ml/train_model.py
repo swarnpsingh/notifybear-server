@@ -11,14 +11,12 @@ The new architecture uses:
 - ml/shared_model.py and ml/service.py
 """
 
-import logging
 import tempfile
 import warnings
 
 from ml.synthetic import SyntheticDataGenerator
 from ml.model import UserNotificationModel
 
-logger = logging.getLogger(__name__)
 
 
 def train_for_user(user_id, apps, total=1000):
@@ -44,12 +42,6 @@ def train_for_user(user_id, apps, total=1000):
         DeprecationWarning,
         stacklevel=2
     )
-    
-    logger.warning(
-        f"Using deprecated train_for_user() for user {user_id}. "
-        "Consider migrating to global model architecture."
-    )
-    
     # Generate synthetic data (old way)
     dataset = SyntheticDataGenerator.generate_for_cold_start(apps, n=total)
     
@@ -61,7 +53,5 @@ def train_for_user(user_id, apps, total=1000):
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".joblib")
     model.save(tmp.name)  # Use .joblib, not .onnx (ONNX conversion is buggy)
     tmp.close()
-    
-    logger.info(f"Legacy model saved to {tmp.name}")
     
     return tmp.name
