@@ -8,6 +8,9 @@ Key changes:
 """
 
 import joblib
+import onnx
+import skl2onnx
+from skl2onnx.common.data_types import FloatTensorType
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -233,6 +236,12 @@ class UserNotificationModel:
         }
         
         joblib.dump(model_data, path, compress=3)
+
+    def save_onnx(self, path, feature_count):
+        initial_type = [('float_input', FloatTensorType([None, feature_count]))]
+        onnx_model = skl2onnx.convert_sklearn(self.model, initial_types=initial_type)
+        with open(path, "wb") as f:
+            f.write(onnx_model.SerializeToString())
     
     def load(self, path):
         """
