@@ -314,3 +314,18 @@ class FeatureExtractor:
         
         logger.info(f"Batch extracted features for {len(notifications)} notifications")
         return features_list
+    
+    @staticmethod
+    def to_vector(feature_dict):
+        keys = sorted(feature_dict.keys())  # fixed order
+
+        vector = []
+        for k in keys:
+            v = feature_dict[k]
+
+            if isinstance(v, (int, float)):
+                vector.append(float(v))
+            else:
+                vector.append(0.0)  # ignore non-numeric features
+
+        return vector
