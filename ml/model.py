@@ -37,8 +37,6 @@ class UserNotificationModel:
             self.model = Ridge(alpha=1.0)
     
     def train(self, dataset, validate=True, test_size=0.2, random_state=42):
-        if not dataset or len(dataset) < 20:
-            raise ValueError("Not enough data to train model")
 
         X, y = zip(*dataset)
         X = np.array(X, dtype=np.float32)
