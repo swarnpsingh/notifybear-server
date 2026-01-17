@@ -71,6 +71,7 @@ CANONICAL_FEATURE_ORDER = [
 
 class UserNotificationModel:
     def __init__(self, model_type="gbm"):
+        self.model_type = model_type
         if model_type == "gbm":
             self.model = HistGradientBoostingRegressor(
                 max_depth=6,
@@ -79,7 +80,7 @@ class UserNotificationModel:
                 random_state=42
             )
         else:
-            self.model = Ridge(alpha=1.0)
+            raise ValueError("Only 'gbm' model_type is supported for now")
     
     def train(self, dataset, validate=True, test_size=0.2, random_state=42):
         if not dataset or len(dataset) == 0:
@@ -235,34 +236,22 @@ class UserNotificationModel:
         
         Returns:
             dict: {feature_name: importance_score}
-        """
-        if self.pipeline is None:
-            raise ValueError("Model not trained yet")
-        
+        """        
         if self.model_type != 'gbm':
             return {}
         
         try:
-            # Get regressor from pipeline
-            regressor = self.pipeline.named_steps['reg']
-            
-            # Get feature names after preprocessing
-            preprocessor = self.pipeline.named_steps['prep']
-            feature_names_out = preprocessor.get_feature_names_out()
             
             # Get importances
-            importances = regressor.feature_importances_
+            importances = self.model.feature_importances_
             
             # Sort by importance
             indices = np.argsort(importances)[::-1][:top_n]
             
-            importance_dict = {
-                feature_names_out[i]: float(importances[i])
+            return {
+                CANONICAL_FEATURE_ORDER[i]: float(importances[i])
                 for i in indices
-            }
-            
-            return importance_dict
-        
+            }        
         except Exception as e:
             return {}
     
