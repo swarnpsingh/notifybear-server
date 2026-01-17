@@ -272,9 +272,9 @@ class SyntheticDataGenerator:
             "app_open_rate": 0.5,  # Neutral: no prior knowledge
             "app_avg_reaction_time": 300.0,  # 5 minutes default
             "user_global_open_rate": 0.5,  # Neutral
-            "notifications_today": random.randint(5, 30),
-            "notifications_this_hour": random.randint(0, 5),
-            "time_since_last_notif": random.uniform(300, 3600),  # 5-60 min
+            "notifications_today": 0,
+            "notifications_this_hour": 0,
+            "time_since_last_notif": 3600.0,  # 60 min
             "is_first_of_day": 0,
             
             # Channel
@@ -291,8 +291,8 @@ class SyntheticDataGenerator:
                 (len(text) > 200 and ('http' in text_lower or 'www.' in text_lower))
             ),
             "is_high_priority_app": int(FeatureExtractor.APP_PRIORITY.get(app, 0.5) > 0.7),
-            "is_notification_burst": int(random.randint(0, 10) > 7),
-            "is_rare_notification": int(random.uniform(300, 3600) > 7200),
+            "is_notification_burst": 0,
+            "is_rare_notification": 0,
         }
         
         return features
