@@ -288,7 +288,7 @@ class ModelRetrainer:
     #         return None
     
     @staticmethod
-    def train_model(user, apps=None, model_type='ridge', target_size=500, validate=True):
+    def train_model(user, apps=None, model_type='gbm', target_size=500, validate=True):
         dataset = ModelRetrainer.build_dataset(user, apps=apps, target_size=target_size)
         if not dataset:
             return None, None
