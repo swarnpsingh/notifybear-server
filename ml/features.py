@@ -7,7 +7,50 @@ from django.db.models import F, Avg, Count, Q
 
 logger = logging.getLogger(__name__)
 
+CANONICAL_FEATURE_ORDER = [
+        # ---- Temporal ----
+        "hour",
+        "day_of_week",
+        "is_weekend",
+        "is_work_hours",
+        "is_sleep_hours",
+        "is_morning",
+        "is_afternoon",
+        "is_evening",
 
+        # ---- Text ----
+        "text_length",
+        "title_length",
+        "has_urgent",
+        "has_promo",
+        "has_person",
+        "has_question",
+        "has_numbers",
+        "has_url",
+        "is_short",
+        "is_long",
+        "word_count",
+        "uppercase_ratio",
+
+        # ---- App ----
+        "app_priority",
+
+        # ---- User stats ----
+        "app_open_rate",
+        "app_avg_reaction_time",
+        "user_global_open_rate",
+        "notifications_today",
+        "notifications_this_hour",
+        "time_since_last_notif",
+        "is_first_of_day",
+
+        # ---- Derived ----
+        "is_likely_otp",
+        "is_likely_promo",
+        "is_high_priority_app",
+        "is_notification_burst",
+        "is_rare_notification"
+    ]
 class FeatureExtractor:
     # Keyword lists for text analysis
     URGENT_WORDS = [
@@ -314,18 +357,11 @@ class FeatureExtractor:
         
         logger.info(f"Batch extracted features for {len(notifications)} notifications")
         return features_list
-    
+
     @staticmethod
     def to_vector(feature_dict):
-        keys = sorted(feature_dict.keys())  # fixed order
-
         vector = []
-        for k in keys:
-            v = feature_dict[k]
-
-            if isinstance(v, (int, float)):
-                vector.append(float(v))
-            else:
-                vector.append(0.0)  # ignore non-numeric features
-
+        for k in CANONICAL_FEATURE_ORDER:
+            v = feature_dict.get(k, 0.0)
+            vector.append(float(v) if isinstance(v, (int, float)) else 0.0)
         return vector
