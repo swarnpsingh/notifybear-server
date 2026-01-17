@@ -24,6 +24,51 @@ from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, root_mean_squared_error
 
+CANONICAL_FEATURE_ORDER = [
+        # ---- Temporal ----
+        "hour",
+        "day_of_week",
+        "is_weekend",
+        "is_work_hours",
+        "is_sleep_hours",
+        "is_morning",
+        "is_afternoon",
+        "is_evening",
+
+        # ---- Text ----
+        "text_length",
+        "title_length",
+        "has_urgent",
+        "has_promo",
+        "has_person",
+        "has_question",
+        "has_numbers",
+        "has_url",
+        "is_short",
+        "is_long",
+        "word_count",
+        "uppercase_ratio",
+
+        # ---- App ----
+        "app_priority",
+
+        # ---- User stats ----
+        "app_open_rate",
+        "app_avg_reaction_time",
+        "user_global_open_rate",
+        "notifications_today",
+        "notifications_this_hour",
+        "time_since_last_notif",
+        "is_first_of_day",
+
+        # ---- Derived ----
+        "is_likely_otp",
+        "is_likely_promo",
+        "is_high_priority_app",
+        "is_notification_burst",
+        "is_rare_notification"
+    ]
+
 class UserNotificationModel:
     def __init__(self, model_type="gbm"):
         if model_type == "gbm":
@@ -37,6 +82,8 @@ class UserNotificationModel:
             self.model = Ridge(alpha=1.0)
     
     def train(self, dataset, validate=True, test_size=0.2, random_state=42):
+        if not dataset or len(dataset) == 0:
+            raise ValueError("Empty dataset — cannot train")
 
         X, y = zip(*dataset)
         X = np.array(X, dtype=np.float32)
@@ -54,7 +101,10 @@ class UserNotificationModel:
             X_val = y_val = None
 
         self.model.fit(X_train, y_train)
-
+        
+        self.pipeline = self.model
+        self.feature_names = CANONICAL_FEATURE_ORDER
+        
         metrics = {}
 
         if validate:
