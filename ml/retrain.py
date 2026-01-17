@@ -167,17 +167,25 @@ class ModelRetrainer:
                 apps=user_apps,
                 n=needed
             )
-
-            dataset = real_data + synthetic
+            synthetic_vectors = [
+                (FeatureExtractor.to_vector(feats), label)
+                for feats, label in synthetic
+            ]
+            dataset = real_data + synthetic_vectors
             random.shuffle(dataset)
             return dataset
 
         # ---- CASE 3: ZERO real data ----
         # Purely synthetic warm start
-        return SyntheticDataGenerator.generate_for_cold_start(
+        synthetic = SyntheticDataGenerator.generate_for_cold_start(
             apps=user_apps,
             n=target_size
         )
+
+        return [
+            (FeatureExtractor.to_vector(feats), label)
+            for feats, label in synthetic
+        ]
     # @staticmethod
     # def build_dataset(user, apps=None, target_size=500):
     #     """
