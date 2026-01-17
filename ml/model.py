@@ -81,7 +81,7 @@ class UserNotificationModel:
             )
         else:
             raise ValueError("Only 'gbm' model_type is supported for now")
-    
+
     def train(self, dataset, validate=True, test_size=0.2, random_state=42):
         if not dataset or len(dataset) == 0:
             raise ValueError("Empty dataset — cannot train")
@@ -130,85 +130,32 @@ class UserNotificationModel:
                 "num_train": len(X_train),
                 "num_val": len(X_val),
             }
+            self.val_mae = metrics.get("val_mae")
+            self.val_rmse = metrics.get("val_rmse")
+            self.train_rmse = float(
+                root_mean_squared_error(y_train, self.model.predict(X_train))
+            )
         self.is_trained = True
 
         return metrics
     
     def predict(self, features):
-        """
-        Predict engagement score for a single notification.
-        
-        Args:
-            features: dict of features
-        
-        Returns:
-            float: 0.0-1.0 (engagement score)
-        """
-        if self.pipeline is None:
-            raise ValueError("Model not trained yet")
-        
-        # Convert to DataFrame
-        features_df = pd.DataFrame([features])
-        
-        # Add missing features with safe defaults
-        for fname in self.feature_names:
-            if fname not in features_df.columns:
-                if fname in ["app", "channel_id"]:
-                    features_df[fname] = "unknown"
-                else:
-                    features_df[fname] = 0.0
-        
-        # Reorder columns to match training
-        features_df = features_df[self.feature_names]
-        
-        try:
-            # Predict
-            score = float(self.pipeline.predict(features_df)[0])
-            
-            # Clip to valid range
-            score = max(0.0, min(1.0, score))            
-            return score
-        
-        except Exception as e:
-            return 0.5  # Default to medium priority on error
+        vec = [float(features.get(k, 0.0)) for k in CANONICAL_FEATURE_ORDER]
+        arr = np.array([vec], dtype=np.float32)
+        score = float(self.model.predict(arr)[0])
+        return max(0.0, min(1.0, score))
     
     def predict_batch(self, features_list):
-        """
-        Predict engagement scores for multiple notifications efficiently.
-        
-        Args:
-            features_list: List of feature dicts
-        
-        Returns:
-            np.array: Array of engagement scores
-        """
-        if self.pipeline is None:
-            raise ValueError("Model not trained yet")
-        
-        # Convert to DataFrame
-        features_df = pd.DataFrame(features_list)
-        
-        # Add missing features
-        for fname in self.feature_names:
-            if fname not in features_df.columns:
-                if fname in ["app", "channel_id"]:
-                    features_df[fname] = "unknown"
-                else:
-                    features_df[fname] = 0.0
-        
-        # Reorder columns
-        features_df = features_df[self.feature_names]
-        
-        try:
-            # Predict
-            scores = self.pipeline.predict(features_df)
-            
-            # Clip to valid range
-            scores = np.clip(scores, 0.0, 1.0)
-            return scores
-        
-        except Exception as e:
-            return np.full(len(features_list), 0.5)  # Default array
+        X = []
+
+        for f in features_list:
+            vec = [float(f.get(k, 0.0)) for k in CANONICAL_FEATURE_ORDER]
+            X.append(vec)
+
+        X = np.array(X, dtype=np.float32)
+        scores = self.model.predict(X)
+        return np.clip(scores, 0.0, 1.0)
+
     
     def predict_priority_bucket(self, features):
         """
