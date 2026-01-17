@@ -285,10 +285,7 @@ class ModelRetrainer:
         if not dataset:
             return None, None
 
-        cleaned_dataset = []
-        for feature_dict, label in dataset:
-            feature_vector = FeatureExtractor.to_vector(feature_dict)
-            cleaned_dataset.append((feature_vector, label))
+        cleaned_dataset = dataset
         
         model = UserNotificationModel(model_type=model_type)
         metrics = model.train(cleaned_dataset, validate=validate)
