@@ -65,6 +65,7 @@ REST_FRAMEWORK = {
         "user": "10000/day",
         "anon": "100/hour",
         "login": "25/minute",
+        "notif_ingest": "2000/hour",
     }
 }
 from datetime import timedelta

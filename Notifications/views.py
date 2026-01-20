@@ -1,10 +1,11 @@
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum, Prefetch
+from Notifications.throttles import NotificationIngestThrottle
 
 from .models import (
     NotificationEvent,
@@ -144,6 +145,7 @@ def get_user_notifications(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([NotificationIngestThrottle])
 def ingest_notification(request):
     s = IngestNotificationSerializer(data=request.data)
     s.is_valid(raise_exception=True)
