@@ -35,7 +35,7 @@ def calculate_analytics(user, notif_type):
     weekday_counts = defaultdict(int)
 
     for obj in qs:
-        day = obj.notification.post_time.weekday()  # 0=Mon
+        day = obj.notification_event.post_time.weekday()  # 0=Mon
         weekday_counts[day] += 1
 
     weekly_activity = [weekday_counts[i] for i in range(7)]
