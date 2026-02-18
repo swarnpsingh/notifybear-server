@@ -127,6 +127,7 @@ def ingest_notification(request):
             "info_text": v.get("info_text", ""),
             "text_lines": v.get("text_lines", ""),
             "channel_id": v.get("channel_id", ""),
+            "type": v.get("type", ""),
             "conversation_title": v.get("conversation_title", ""),
             "people": v.get("people"),
             "large_icon_base64": v.get("large_icon_base64"),
@@ -434,6 +435,4 @@ class NotificationAnalyticsView(APIView):
 
         data = calculate_analytics(request.user, notif_type)
 
-        serializer = NotificationAnalyticsSerializer(data)
-
-        return Response(serializer.data)
+        return Response(data)

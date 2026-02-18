@@ -12,9 +12,9 @@ def calculate_analytics(user, notif_type):
 
     qs = UserNotificationState.objects.filter(
         user=user,
-        notification__type=notif_type,
-        notification__post_time__gte=week_start
-    ).select_related("notification")
+        notification_event__type=notif_type,
+        notification_event__post_time__gte=week_start
+    ).select_related("notification_event")
 
     # ========================
     # This week count
@@ -25,7 +25,7 @@ def calculate_analytics(user, notif_type):
     # Ignore rate
     # ========================
     total = qs.count()
-    ignored = qs.filter(opened=False).count()
+    ignored = qs.filter(is_read=False).count()
 
     ignore_rate = (ignored / total) if total > 0 else 0.0
 
