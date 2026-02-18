@@ -57,6 +57,7 @@ class NotificationEvent(models.Model):
     
     # Notification metadata
     channel_id = models.CharField(max_length=200, null=True, blank=True)
+    type = models.CharField(max_length=50)
     post_time = models.DateTimeField(default=timezone.now, db_index=True)
     
     # Primary text content (immutable)

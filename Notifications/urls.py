@@ -14,6 +14,7 @@ from .views import (
     mark_notification_dismissed,
     unread_count,
     update_notification_state,
+    NotificationAnalyticsView,
 )
 
 urlpatterns = [
@@ -87,4 +88,5 @@ urlpatterns = [
         permission_classes([IsAuthenticated])(update_notification_state),
         name="update_notification_state"
     ),
+    path("analytics/", NotificationAnalyticsView.as_view()),
 ]

@@ -293,3 +293,11 @@ class InteractionEventSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ("id", "created_at")
+
+class NotificationAnalyticsSerializer(serializers.Serializer):
+    thisWeekCount = serializers.IntegerField()
+    ignoreRate = serializers.FloatField()
+    avgResponse = serializers.CharField()
+    weeklyActivity = serializers.ListField(
+        child=serializers.IntegerField()
+    )
