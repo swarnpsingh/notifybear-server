@@ -17,6 +17,7 @@ from ml.labels import ObservedLabeler
 from ml.features import FeatureExtractor
 from ml.synthetic import SyntheticDataGenerator
 from ml.model import UserNotificationModel
+from django.db.models import Prefetch
 
 CANONICAL_FEATURE_ORDER = [
         # ---- Temporal ----
@@ -124,7 +125,9 @@ class ModelRetrainer:
             qs = qs.filter(app__package_name__in=apps)
 
         user_apps = list(
-            qs.values_list('app__package_name', flat=True).distinct()
+            qs.order_by()
+            .values_list('app__package_name', flat=True)
+            .distinct()[:50]
         )
 
         # If user has NO apps in DB, still create a synthetic dataset
@@ -138,7 +141,11 @@ class ModelRetrainer:
         real_data = []
 
         notifications = qs.select_related('app') \
-            .prefetch_related('user_states') \
+            .prefetch_related(
+                Prefetch(
+                    'user_states',
+                    queryset=UserNotificationState.objects.filter(user=user)
+                )) \
             .order_by('-post_time')[:1000]
 
         for notif in notifications:
@@ -328,7 +335,12 @@ class ModelRetrainer:
         # Get recent notifications
         recent_notifs = NotificationEvent.objects.filter(
             app__user=user
-        ).select_related('app').prefetch_related('user_states').order_by('-post_time')[:n_recent]
+        ).select_related('app').prefetch_related(
+            Prefetch(
+                'user_states',
+                queryset=UserNotificationState.objects.filter(user=user)
+            )
+            ).order_by('-post_time')[:n_recent]
         
         # Build test data
         test_data = []
