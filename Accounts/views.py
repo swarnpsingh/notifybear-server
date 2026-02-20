@@ -185,3 +185,18 @@ class GoogleLoginView(APIView):
             "access": str(refresh.access_token),
             "user": UserSerializer(user).data
         })
+
+class UploadProfilePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        profile = request.user.profile
+
+        if "photo" not in request.FILES:
+            return Response({"error":"No file"}, status=400)
+
+        profile.dp = request.FILES["dp"]
+        profile.save()
+
+        serializer = UserSerializer(request.user, context={"request":request})
+        return Response(serializer.data)
