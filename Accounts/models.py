@@ -31,6 +31,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     dp = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     last_model_retrain = models.DateTimeField(null=True, blank=True)
+    address = models.TextField(blank=True, null=True)
     
     def __str__(self):
         return f"{self.user.username}'s Profile"

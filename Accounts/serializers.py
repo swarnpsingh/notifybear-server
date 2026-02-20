@@ -13,7 +13,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ["dp", "dp_url"]
+        fields = ["dp", "dp_url", "address"]
 
     def get_dp_url(self, obj):
         request = self.context.get("request")
