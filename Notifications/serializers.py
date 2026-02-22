@@ -184,6 +184,7 @@ class IngestNotificationSerializer(serializers.Serializer):
     
     # Metadata
     channel_id = serializers.CharField(max_length=200, required=False, allow_blank=True, allow_null=True)
+    type = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
     conversation_title = serializers.CharField(max_length=500, required=False, allow_blank=True, allow_null=True)
     people = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
