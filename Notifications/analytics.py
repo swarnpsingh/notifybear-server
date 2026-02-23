@@ -9,7 +9,7 @@ from .models import UserNotificationState
 def calculate_analytics(user, notif_type):
 
     now = timezone.now()
-    start_of_week = now - timedelta(days=now.weekday())
+    start_of_week = now - timedelta(days=7)
 
     qs = UserNotificationState.objects.filter(
         user=user,
