@@ -2,6 +2,10 @@ from django.urls import path
 from ml.views import train_model
 
 urlpatterns = [
-    # A single, smart endpoint that handles both custom and routine training
-    path("train/", train_model, name="train_model"),
+    # New consolidated endpoint
+    path("train/", train_model, name="train"),
+
+    # Backward compatibility for existing Android clients
+    path("train_model/", train_model, name="train_model_legacy"),
+    path("retrain_model/", train_model, name="retrain_model_legacy"),
 ]

@@ -1,11 +1,12 @@
 import numpy as np
+import pandas as pd
 from django.utils import timezone
+from django.db.models import Count, Q
 from . import config
 
 from Notifications.models import (
     NotificationEvent,
     UserNotificationState,
-    InteractionEvent,
 )
 
 
@@ -81,95 +82,72 @@ class FeatureEngineer:
         - Uses Django ORM to fetch NotificationEvent and UserNotificationState
         - `apps` may be a list of app ids or package_name strings
         """
+        # Lazy import to avoid circular imports at module import time
         from .service import service as priority_service
         from datetime import timedelta
-        from django.utils import timezone
 
         cutoff = timezone.now() - timedelta(days=lookback_days)
 
-        qs = NotificationEvent.objects.select_related('app').filter(app__user=user, post_time__gte=cutoff)
+        # 1. Optimized Batch Query for CTRs (single query for all history)
+        stats = (
+            NotificationEvent.objects.filter(app__user=user)
+            .values('app_id', 'channel_id')
+            .annotate(
+                sent=Count('id'),
+                clicks=Count('user_states', filter=Q(user_states__opened_at__isnull=False)),
+            )
+        )
 
+        ctr_map = {}
+        for s in stats:
+            key = f"{s['app_id']}_{s['channel_id']}"
+            ctr_map[key] = (s['clicks'] / s['sent']) if s['sent'] > 0 else config.GLOBAL_OPEN_RATE_PRIOR
+
+        # 2. Fetch all valid notification logs in one go (prefetch user_states)
+        qs = (
+            NotificationEvent.objects.filter(app__user=user, post_time__gte=cutoff)
+            .select_related('app')
+            .prefetch_related('user_states')
+        )
         if apps:
-            # try to detect if apps elements are ints (ids) or strings (package names)
-            if all(isinstance(a, int) for a in apps):
-                qs = qs.filter(app_id__in=apps)
-            else:
-                qs = qs.filter(app__package_name__in=apps)
+            qs = qs.filter(app__package_name__in=apps)
 
-        # Order chronologically so context calculations are simpler
-        qs = qs.order_by('post_time')
+        notifications = list(qs.order_by('post_time'))
+        if not notifications:
+            return
 
-        # For performance we prefetch related states
-        from django.db.models import Prefetch
-        user_states = UserNotificationState.objects.filter(user=user)
-        qs = qs.prefetch_related(Prefetch('user_states', queryset=user_states, to_attr='__user_states'))
+        # 3. Use Pandas for high-speed rolling calculations
+        df = pd.DataFrame([{'id': n.id, 'time': n.post_time} for n in notifications])
+        if df.empty:
+            return
 
-        for notif in qs.iterator():
-            # Locate user state if present
-            user_state = None
-            if hasattr(notif, '__user_states') and notif.__user_states:
-                # There should be at most one per (user, notification_event)
-                user_state = notif.__user_states[0]
+        df['time'] = pd.to_datetime(df['time'])
+        df['time_diff'] = df['time'].diff().dt.total_seconds().fillna(86400.0)
+        df['rolling_24h'] = df.rolling('1D', on='time')['id'].count().fillna(0)
 
-            sent_time = notif.post_time
-            opened_time = getattr(user_state, 'opened_at', None) if user_state else None
-            dismissed_time = getattr(user_state, 'dismissed_at', None) if user_state else None
-
-            label = priority_service.calculate_label(sent_time, opened_time, dismissed_time)
-            # Drop pending/unknown labels
+        # 4. Final loop with zero DB queries inside
+        for i, notif in enumerate(notifications):
+            state = notif.user_states.first() if hasattr(notif, 'user_states') else None
+            label = priority_service.calculate_label(
+                notif.post_time,
+                getattr(state, 'opened_at', None),
+                getattr(state, 'dismissed_at', None),
+            )
             if label is None:
                 continue
 
-            # Build minimal user_stats used by FeatureEngineer.extract
-            channel_id = getattr(notif, 'channel_id', 'default')
-            channel_key = f"channel_{notif.app_id}_{channel_id}"
-
-            recent_events = NotificationEvent.objects.filter(
-                app=notif.app,
-                channel_id=channel_id,
-                post_time__gte=cutoff
-            )
-            ch_sent = recent_events.count()
-
-            ch_clicks = UserNotificationState.objects.filter(
-                notification_event__in=recent_events,
-                opened_at__isnull=False
-            ).count()
-
-            app_events = NotificationEvent.objects.filter(app=notif.app, post_time__gte=cutoff)
-            app_sent = app_events.count()
-            app_clicks = UserNotificationState.objects.filter(
-                notification_event__in=app_events,
-                opened_at__isnull=False
-            ).count()
-
-            app_ctr = (app_clicks / app_sent) if app_sent > 0 else config.GLOBAL_OPEN_RATE_PRIOR
-
-            notifs_past_24h = NotificationEvent.objects.filter(app__user=user, post_time__gte=sent_time - timedelta(days=1)).count()
+            # Precomputed stats
+            channel_key = f"{notif.app_id}_{notif.channel_id}"
+            app_ctr = ctr_map.get(channel_key, config.GLOBAL_OPEN_RATE_PRIOR)
 
             user_stats = {
-                f"{channel_key}_sent": ch_sent,
-                f"{channel_key}_clicks": ch_clicks,
-                f"app_{notif.app_id}_ctr": app_ctr,
-                "notifs_past_24h": notifs_past_24h,
+                'notifs_past_24h': float(df.iloc[i]['rolling_24h']),
+                f"app_{notif.app_id}_ctr": float(app_ctr),
             }
 
-            # context
-            last_interaction = InteractionEvent.objects.filter(user=user, timestamp__lt=sent_time).order_by('-timestamp').first()
-            sec_since_last_action = (sent_time - last_interaction.timestamp).total_seconds() if last_interaction else 86400.0
-
-            prev_notif = NotificationEvent.objects.filter(app__user=user, post_time__lt=sent_time).order_by('-post_time').first()
-            time_since_last_notif_sec = (sent_time - prev_notif.post_time).total_seconds() if prev_notif else 86400.0
-
             context = {
-                "sec_since_last_action": sec_since_last_action,
-                "time_since_last_notif_sec": time_since_last_notif_sec,
+                'time_since_last_notif_sec': float(df.iloc[i]['time_diff']),
             }
 
             vector = FeatureEngineer.extract(notif, user_stats, context)
-
-            # Ensure label is strictly 0.0 or 1.0
-            if label not in (0.0, 1.0, 0, 1):
-                continue
-
             yield vector, float(label)

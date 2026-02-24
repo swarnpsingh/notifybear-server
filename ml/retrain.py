@@ -50,10 +50,11 @@ class ModelRetrainer:
 
         # Update user's last retrain timestamp when possible
         try:
-            user.last_model_retrain = timezone.now()
-            user.save()
+            # last_model_retrain lives on the user's profile object
+            user.profile.last_model_retrain = timezone.now()
+            user.profile.save()
         except Exception:
-            logger.debug("Could not persist last_model_retrain for user")
+            logger.debug("Profile not found or could not persist last_model_retrain")
 
         # Prefer ONNX if exported, else pickle
         if os.path.exists(clf.onnx_path):
