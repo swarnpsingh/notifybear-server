@@ -1,367 +1,175 @@
-import logging
-import re
-from datetime import timedelta
+import numpy as np
 from django.utils import timezone
-from django.core.cache import cache
-from django.db.models import F, Avg, Count, Q
+from . import config
 
-logger = logging.getLogger(__name__)
+from Notifications.models import (
+    NotificationEvent,
+    UserNotificationState,
+    InteractionEvent,
+)
 
-CANONICAL_FEATURE_ORDER = [
-        # ---- Temporal ----
-        "hour",
-        "day_of_week",
-        "is_weekend",
-        "is_work_hours",
-        "is_sleep_hours",
-        "is_morning",
-        "is_afternoon",
-        "is_evening",
 
-        # ---- Text ----
-        "text_length",
-        "title_length",
-        "has_urgent",
-        "has_promo",
-        "has_person",
-        "has_question",
-        "has_numbers",
-        "has_url",
-        "is_short",
-        "is_long",
-        "word_count",
-        "uppercase_ratio",
-
-        # ---- App ----
-        "app_priority",
-
-        # ---- User stats ----
-        "app_open_rate",
-        "app_avg_reaction_time",
-        "user_global_open_rate",
-        "notifications_today",
-        "notifications_this_hour",
-        "time_since_last_notif",
-        "is_first_of_day",
-
-        # ---- Derived ----
-        "is_likely_otp",
-        "is_likely_promo",
-        "is_high_priority_app",
-        "is_notification_burst",
-        "is_rare_notification"
-    ]
-class FeatureExtractor:
-    # Keyword lists for text analysis
-    URGENT_WORDS = [
-        "otp", "urgent", "verify", "code", "important", 
-        "asap", "now", "emergency", "alert", "action required",
-        "expires", "deadline", "verify", "confirm"
-    ]
-    
-    PROMO_WORDS = [
-        "sale", "offer", "discount", "deal", "win", 
-        "free", "limited time", "coupon", "promo", "save",
-        "% off", "flash sale"
-    ]
-    
-    PERSON_WORDS = [
-        "mom", "dad", "boss", "wife", "husband", "manager",
-        "sir", "madam", "team", "family"
-    ]
-    
-    QUESTION_WORDS = ["?", "when", "where", "what", "why", "how", "can you"]
-    
-    # App priority mapping (weak prior, ML can override)
-    APP_PRIORITY = {
-        # Messaging & Calls (highest priority)
-        'com.whatsapp': 0.9,
-        'com.whatsapp.w4b': 0.9,
-        'org.telegram.messenger': 0.85,
-        'com.google.android.apps.messaging': 0.85,
-        'com.android.mms': 0.85,
-        'com.android.phone': 0.95,
-        
-        # Email (high priority)
-        'com.google.android.gm': 0.8,
-        'com.microsoft.office.outlook': 0.8,
-        
-        # Work apps (high priority)
-        'com.slack': 0.85,
-        'com.microsoft.teams': 0.85,
-        'us.zoom.videomeetings': 0.8,
-        
-        # Calendar (high priority)
-        'com.google.android.calendar': 0.85,
-        
-        # Social media (medium-low priority)
-        'com.instagram.android': 0.3,
-        'com.facebook.katana': 0.3,
-        'com.facebook.orca': 0.4,  # Messenger slightly higher
-        'com.snapchat.android': 0.3,
-        'com.twitter.android': 0.35,
-        
-        # Entertainment (low priority)
-        'com.google.android.youtube': 0.2,
-        'com.netflix.mediaclient': 0.2,
-        'com.spotify.music': 0.25,
-        
-        # Games (lowest priority)
-        'com.king.candycrushsaga': 0.1,
-        'com.supercell.clashofclans': 0.1,
-    }
-    
-    @classmethod
-    def extract(cls, notification, user, user_stats=None):
-        # Get user stats (cached or computed)
-        if user_stats is None:
-            user_stats = cls.get_cached_user_stats(user, notification.app, cutoff=notification.post_time)
-        
-        # Combine all text fields
-        text = cls._combine_text(notification)
-        text_lower = text.lower()
-        
-        # === 1. Basic Temporal Features ===
-        features = {
-            "hour": notification.post_time.hour,
-            "day_of_week": notification.post_time.weekday(),
-            "is_weekend": int(notification.post_time.weekday() >= 5),
-            "is_work_hours": int(9 <= notification.post_time.hour <= 17),
-            "is_sleep_hours": int(notification.post_time.hour < 7 or notification.post_time.hour > 22),
-            "is_morning": int(6 <= notification.post_time.hour < 12),
-            "is_afternoon": int(12 <= notification.post_time.hour < 18),
-            "is_evening": int(18 <= notification.post_time.hour < 23),
-        }
-        
-        # === 2. Text Content Features ===
-        features.update({
-            "text_length": len(text),
-            "title_length": len(notification.title or ""),
-            "has_urgent": int(any(w in text_lower for w in cls.URGENT_WORDS)),
-            "has_promo": int(any(w in text_lower for w in cls.PROMO_WORDS)),
-            "has_person": int(any(w in text_lower for w in cls.PERSON_WORDS)),
-            "has_question": int(any(w in text_lower for w in cls.QUESTION_WORDS)),
-            "has_numbers": int(bool(re.search(r'\d', text))),
-            "has_url": int(bool(re.search(r'http|www\.', text_lower))),
-            "is_short": int(len(text) < 50),
-            "is_long": int(len(text) > 200),
-            "word_count": len(text.split()),
-            "uppercase_ratio": cls._calculate_uppercase_ratio(text),
-        })
-        
-        # === 3. App Features ===
-        features.update({
-            "app": notification.app.package_name,
-            "app_priority": cls.APP_PRIORITY.get(notification.app.package_name, 0.5),
-        })
-        
-        # === 4. User Behavioral Features (from cache) ===
-        features.update({
-            "app_open_rate": user_stats.get("app_open_rate", 0.5),
-            "app_avg_reaction_time": user_stats.get("app_avg_reaction_time", 300.0),
-            "user_global_open_rate": user_stats.get("user_global_open_rate", 0.5),
-            "notifications_today": user_stats.get("notifications_today", 0),
-            "notifications_this_hour": user_stats.get("notifications_this_hour", 0),
-            "time_since_last_notif": user_stats.get("time_since_last_notif", 3600.0),
-            "is_first_of_day": int(user_stats.get("notifications_today", 0) == 0),
-        })
-        
-        # === 5. Channel Features ===
-        features["channel_id"] = notification.channel_id or "unknown"
-        
-        # === 6. Derived Features ===
-        features.update({
-            # High-signal combinations
-            "is_likely_otp": int(
-                features["has_urgent"] and 
-                features["has_numbers"] and 
-                features["is_short"]
-            ),
-            "is_likely_promo": int(
-                features["has_promo"] or 
-                (features["is_long"] and features["has_url"])
-            ),
-            "is_high_priority_app": int(features["app_priority"] > 0.7),
-            
-            # Context features
-            "is_notification_burst": int(features["notifications_this_hour"] > 5),
-            "is_rare_notification": int(features["time_since_last_notif"] > 7200),  # 2 hours
-        })
-        
-        return features
-    
-    @classmethod
-    def get_cached_user_stats(cls, user, app=None, cutoff=None, cache_duration=3600):
-        # Build cache key
-        cache_key = f"user_stats_{user.id}"
-        if app:
-            cache_key += f"_app_{app.id}"
-        
-        # Try cache first
-        stats = cache.get(cache_key)
-        if stats is not None:
-            logger.debug(f"Cache HIT for {cache_key}")
-            return stats
-        
-        # Cache miss, compute stats
-        logger.debug(f"Cache MISS for {cache_key}, computing...")
-        stats = cls._compute_user_stats(user, app, cutoff)
-        
-        # Cache for 1 hour
-        cache.set(cache_key, stats, cache_duration)
-        
-        return stats
-    
-    @classmethod
-    def _compute_user_stats(cls, user, app=None, before_time=None):
+class FeatureEngineer:
+    @staticmethod
+    def extract(notification, user_stats, context):
         """
-        Compute user behavioral statistics from database.
-        
-        This is expensive, so results are cached.
+        Converts a notification + stats into the highly optimized 8-feature V5 vector.
         """
-        from Notifications.models import UserNotificationState, NotificationEvent
+        dt = notification.post_time
+        title = notification.title or ""
+        text = notification.text or ""
+        full_text = f"{title} {text}".lower().strip()
         
-        now = timezone.now()
-        today = now.date()
+        # --- 1. Linear Time ---
+        raw_hour = dt.hour + (dt.minute / 60.0)
         
-        # === App-specific stats ===
-        if app:
-            app_states = UserNotificationState.objects.filter(
-                user=user,
-                notification_event__app=app,
-                notification_event__post_time__lt=before_time if before_time else timezone.now()
-            )
-            total_app_notifs = app_states.count()
-            opened_app_notifs = app_states.filter(opened_at__isnull=False).count()
-            app_open_rate = opened_app_notifs / total_app_notifs if total_app_notifs > 0 else 0.5
-            
-            # Average reaction time for this app
-            app_reactions = app_states.filter(
-                opened_at__isnull=False
-            ).annotate(
-                reaction=F('opened_at') - F('notification_event__post_time')
-            ).values_list('reaction', flat=True)
-            
-            if app_reactions:
-                avg_reaction = sum(rt.total_seconds() for rt in app_reactions) / len(app_reactions)
+        # --- 2. Channel Micro-Reputation (Smoothed) ---
+        channel_id = getattr(notification, 'channel_id', 'default')
+        channel_key = f"channel_{notification.app_id}_{channel_id}"
+        
+        ch_sent = user_stats.get(f"{channel_key}_sent", 0)
+        ch_clicks = user_stats.get(f"{channel_key}_clicks", 0)
+        
+        # Fallback to overall app CTR if the channel is entirely new
+        app_ctr = user_stats.get(f"app_{notification.app_id}_ctr", config.GLOBAL_OPEN_RATE_PRIOR)
+        
+        numerator = ch_clicks + (config.SMOOTHING_WEIGHT * app_ctr)
+        denominator = ch_sent + config.SMOOTHING_WEIGHT
+        channel_historical_ctr = numerator / denominator
+
+        # --- 3. Stateful Context ---
+        sec_since_action = context.get("sec_since_last_action", 86400.0)
+        is_active_session = 1.0 if sec_since_action < 180.0 else 0.0
+        
+        time_since_last_notif_sec = context.get("time_since_last_notif_sec", 86400.0)
+
+        # --- 4. Structural Meta-Features ---
+        text_len = len(full_text)
+        
+        digit_count = sum(c.isdigit() for c in full_text)
+        digit_density = digit_count / (text_len + 1e-5)
+        
+        title_body_ratio = len(title) / (len(text) + 1e-5)
+        
+        excl_count = full_text.count('!')
+        exclamation_density = excl_count / (text_len + 1e-5)
+        
+        # --- 5. Rolling Volume ---
+        notifs_past_24h = user_stats.get("notifs_past_24h", 1.0)
+
+        # --- Return Vector ---
+        # MUST exactly match config.FEATURE_NAMES order
+        return np.array([
+            raw_hour, 
+            channel_historical_ctr, 
+            is_active_session, 
+            time_since_last_notif_sec, 
+            digit_density, 
+            title_body_ratio, 
+            exclamation_density, 
+            notifs_past_24h
+        ], dtype=np.float32)
+
+    @staticmethod
+    def fetch_training_rows(user, apps=None, lookback_days=30):
+        """
+        Yield tuples (feature_vector, label) for the given user.
+
+        Rules enforced:
+        - Labels computed via ml.service.service.calculate_label
+        - Rows with label None are dropped
+        - Uses Django ORM to fetch NotificationEvent and UserNotificationState
+        - `apps` may be a list of app ids or package_name strings
+        """
+        from .service import service as priority_service
+        from datetime import timedelta
+        from django.utils import timezone
+
+        cutoff = timezone.now() - timedelta(days=lookback_days)
+
+        qs = NotificationEvent.objects.select_related('app').filter(app__user=user, post_time__gte=cutoff)
+
+        if apps:
+            # try to detect if apps elements are ints (ids) or strings (package names)
+            if all(isinstance(a, int) for a in apps):
+                qs = qs.filter(app_id__in=apps)
             else:
-                avg_reaction = 300.0  # Default 5 minutes
-        else:
-            app_open_rate = 0.5
-            avg_reaction = 300.0
-        
-        # === Global user stats ===
-        all_states = UserNotificationState.objects.filter(
-            user=user,
-            notification_event__post_time__lt=before_time if before_time else timezone.now()
-        )
-        total_notifs = all_states.count()
-        opened_notifs = all_states.filter(opened_at__isnull=False).count()
-        global_open_rate = opened_notifs / total_notifs if total_notifs > 0 else 0.5
-        
-        # === Today's activity ===
-        notifications_today = NotificationEvent.objects.filter(
-            app__user=user,
-            post_time__lt=before_time if before_time else timezone.now(),
-            post_time__date=today
-        ).count()
-        
-        # === This hour's activity ===
-        notifications_this_hour = NotificationEvent.objects.filter(
-            app__user=user,
-            post_time__gte=now - timedelta(hours=1)
-        ).count()
-        
-        # === Time since last notification ===
-        last_notif = NotificationEvent.objects.filter(
-            app__user=user
-        ).order_by('-post_time').first()
-        
-        if last_notif:
-            time_since_last = (now - last_notif.post_time).total_seconds()
-        else:
-            time_since_last = 3600.0  # Default 1 hour
-        
-        return {
-            "app_open_rate": app_open_rate,
-            "app_avg_reaction_time": avg_reaction,
-            "user_global_open_rate": global_open_rate,
-            "notifications_today": notifications_today,
-            "notifications_this_hour": notifications_this_hour,
-            "time_since_last_notif": time_since_last,
-        }
-    
-    @classmethod
-    def invalidate_user_cache(cls, user, app=None):
-        cache_key = f"user_stats_{user.id}"
-        cache.delete(cache_key)
-        
-        if app:
-            cache_key_app = f"user_stats_{user.id}_app_{app.id}"
-            cache.delete(cache_key_app)
-        
-        logger.debug(f"Invalidated cache for user {user.id}")
-    
-    @classmethod
-    def precompute_all_user_stats(cls, users=None):
-        from django.contrib.auth import get_user_model
-        
-        if users is None:
-            User = get_user_model()
-            users = User.objects.all()
-        
-        for user in users:
-            try:
-                # Compute and cache
-                stats = cls._compute_user_stats(user)
-                cache_key = f"user_stats_{user.id}"
-                cache.set(cache_key, stats, 3600)  # 1 hour
-                
-                logger.info(f"Precomputed stats for user {user.id}")
-            except Exception as e:
-                logger.error(f"Failed to precompute stats for user {user.id}: {e}")
-    
-    @staticmethod
-    def _combine_text(notification):
-        parts = [
-            notification.title or "",
-            notification.text or "",
-            notification.big_text or "",
-            notification.sub_text or "",
-        ]
-        return " ".join(p for p in parts if p)
-    
-    @staticmethod
-    def _calculate_uppercase_ratio(text):
-        if not text:
-            return 0.0
-        
-        uppercase_count = sum(1 for c in text if c.isupper())
-        letter_count = sum(1 for c in text if c.isalpha())
-        
-        if letter_count == 0:
-            return 0.0
-        
-        return uppercase_count / letter_count
-    
-    @classmethod
-    def batch_extract(cls, notifications, user):
-        # Compute user stats once for all notifications
-        user_stats = cls.get_cached_user_stats(user)
-        
-        # Extract features for each notification
-        features_list = []
-        for notif in notifications:
-            features = cls.extract(notif, user, user_stats=user_stats)
-            features_list.append(features)
-        
-        logger.info(f"Batch extracted features for {len(notifications)} notifications")
-        return features_list
+                qs = qs.filter(app__package_name__in=apps)
 
-    @staticmethod
-    def to_vector(feature_dict):
-        vector = []
-        for k in CANONICAL_FEATURE_ORDER:
-            v = feature_dict.get(k, 0.0)
-            vector.append(float(v) if isinstance(v, (int, float)) else 0.0)
-        return vector
+        # Order chronologically so context calculations are simpler
+        qs = qs.order_by('post_time')
+
+        # For performance we prefetch related states
+        from django.db.models import Prefetch
+        user_states = UserNotificationState.objects.filter(user=user)
+        qs = qs.prefetch_related(Prefetch('user_states', queryset=user_states, to_attr='__user_states'))
+
+        for notif in qs.iterator():
+            # Locate user state if present
+            user_state = None
+            if hasattr(notif, '__user_states') and notif.__user_states:
+                # There should be at most one per (user, notification_event)
+                user_state = notif.__user_states[0]
+
+            sent_time = notif.post_time
+            opened_time = getattr(user_state, 'opened_at', None) if user_state else None
+            dismissed_time = getattr(user_state, 'dismissed_at', None) if user_state else None
+
+            label = priority_service.calculate_label(sent_time, opened_time, dismissed_time)
+            # Drop pending/unknown labels
+            if label is None:
+                continue
+
+            # Build minimal user_stats used by FeatureEngineer.extract
+            channel_id = getattr(notif, 'channel_id', 'default')
+            channel_key = f"channel_{notif.app_id}_{channel_id}"
+
+            recent_events = NotificationEvent.objects.filter(
+                app=notif.app,
+                channel_id=channel_id,
+                post_time__gte=cutoff
+            )
+            ch_sent = recent_events.count()
+
+            ch_clicks = UserNotificationState.objects.filter(
+                notification_event__in=recent_events,
+                opened_at__isnull=False
+            ).count()
+
+            app_events = NotificationEvent.objects.filter(app=notif.app, post_time__gte=cutoff)
+            app_sent = app_events.count()
+            app_clicks = UserNotificationState.objects.filter(
+                notification_event__in=app_events,
+                opened_at__isnull=False
+            ).count()
+
+            app_ctr = (app_clicks / app_sent) if app_sent > 0 else config.GLOBAL_OPEN_RATE_PRIOR
+
+            notifs_past_24h = NotificationEvent.objects.filter(app__user=user, post_time__gte=sent_time - timedelta(days=1)).count()
+
+            user_stats = {
+                f"{channel_key}_sent": ch_sent,
+                f"{channel_key}_clicks": ch_clicks,
+                f"app_{notif.app_id}_ctr": app_ctr,
+                "notifs_past_24h": notifs_past_24h,
+            }
+
+            # context
+            last_interaction = InteractionEvent.objects.filter(user=user, timestamp__lt=sent_time).order_by('-timestamp').first()
+            sec_since_last_action = (sent_time - last_interaction.timestamp).total_seconds() if last_interaction else 86400.0
+
+            prev_notif = NotificationEvent.objects.filter(app__user=user, post_time__lt=sent_time).order_by('-post_time').first()
+            time_since_last_notif_sec = (sent_time - prev_notif.post_time).total_seconds() if prev_notif else 86400.0
+
+            context = {
+                "sec_since_last_action": sec_since_last_action,
+                "time_since_last_notif_sec": time_since_last_notif_sec,
+            }
+
+            vector = FeatureEngineer.extract(notif, user_stats, context)
+
+            # Ensure label is strictly 0.0 or 1.0
+            if label not in (0.0, 1.0, 0, 1):
+                continue
+
+            yield vector, float(label)
