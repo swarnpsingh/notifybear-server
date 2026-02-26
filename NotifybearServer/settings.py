@@ -158,6 +158,9 @@ DATABASES = {
     }
 }
 
+GOOGLE_ANDROID_ID = os.getenv("GOOGLE_ANDROID_ID")
+GOOGLE_WEB_ID = os.getenv("GOOGLE_WEB_ID")
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

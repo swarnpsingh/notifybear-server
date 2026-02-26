@@ -33,6 +33,7 @@ class NotificationEventSerializer(serializers.ModelSerializer):
     app_label = serializers.CharField(source='app.app_label', read_only=True)
     app_id = serializers.IntegerField(source='app.id', read_only=True)
     content_hash = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    type = serializers.CharField(read_only=True)
     
     class Meta:
         model = NotificationEvent
@@ -58,6 +59,7 @@ class NotificationEventSerializer(serializers.ModelSerializer):
             "content_hash",
             "created_at",
             "messages",
+            "type",
         ]
         read_only_fields = ("id", "created_at", "app_id", "package_name", "app_label")
 
@@ -182,6 +184,7 @@ class IngestNotificationSerializer(serializers.Serializer):
     
     # Metadata
     channel_id = serializers.CharField(max_length=200, required=False, allow_blank=True, allow_null=True)
+    type = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
     conversation_title = serializers.CharField(max_length=500, required=False, allow_blank=True, allow_null=True)
     people = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     
@@ -293,3 +296,15 @@ class InteractionEventSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ("id", "created_at")
+
+class NotificationAnalyticsSerializer(serializers.Serializer):
+    thisWeekCount = serializers.IntegerField()
+    ignoreRate = serializers.FloatField()
+    avgResponse = serializers.CharField()
+    weeklyActivity = serializers.ListField(
+        child=serializers.IntegerField()
+    )
+    timeDistribution = serializers.ListField(
+        child=serializers.IntegerField()
+    )
+    insights = serializers.DictField() 

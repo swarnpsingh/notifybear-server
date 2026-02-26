@@ -4,8 +4,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Sum, Prefetch
+from django.db.models import Sum
 from Notifications.throttles import NotificationIngestThrottle
+from .analytics import calculate_analytics
 
 from .models import (
     NotificationEvent,
@@ -22,6 +23,7 @@ from .serializers import (
     IngestInteractionSerializer,
     AppSerializer,
     DailyAggregateSerializer,
+    NotificationAnalyticsSerializer,
 )
 
 
@@ -84,60 +86,6 @@ def get_user_notifications(request):
         "offset": offset,
         "results": data
     })
-# def get_user_notifications(request):
-#     """
-#     Returns all notifications for the user with their interaction state.
-#     Ordered by most recent first.
-#     """
-#     # Get user notification states with related data
-#     states = UserNotificationState.objects.filter(
-#         user=request.user
-#     ).select_related(
-#         'notification_event',
-#         'notification_event__app'
-#     ).order_by('-notification_event__post_time')
-    
-#     serializer = UserNotificationStateSerializer(states, many=True)
-#     return Response(serializer.data)
-
-
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def upload_notification(request):
-#     """
-#     Legacy endpoint - creates notification event and user state.
-#     Consider migrating clients to use ingest_notification instead.
-#     """
-#     serializer = IngestNotificationSerializer(data=request.data)
-#     if serializer.is_valid():
-#         v = serializer.validated_data
-        
-#         # Get or create app
-#         app = _get_or_create_app(
-#             request.user,
-#             v["package_name"],
-#             v.get("app_label", "")
-#         )
-        
-#         # Create notification event
-#         notif_event = NotificationEvent.objects.create(
-#             app=app,
-#             notif_key=v.get("notif_key", f"legacy_{timezone.now().timestamp()}"),
-#             title=v.get("title", ""),
-#             text=v.get("text", ""),
-#             post_time=v.get("posted_at", timezone.now())
-#         )
-        
-#         # Create user state
-#         UserNotificationState.objects.create(
-#             user=request.user,
-#             notification_event=notif_event
-#         )
-        
-#         return Response({"status": "success"}, status=status.HTTP_201_CREATED)
-    
-#     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 # -------------------------
 # Ingest posted notification
@@ -179,6 +127,7 @@ def ingest_notification(request):
             "info_text": v.get("info_text", ""),
             "text_lines": v.get("text_lines", ""),
             "channel_id": v.get("channel_id", ""),
+            "type": v.get("type", ""),
             "conversation_title": v.get("conversation_title", ""),
             "people": v.get("people"),
             "large_icon_base64": v.get("large_icon_base64"),
@@ -472,3 +421,18 @@ def update_notification_state(request):
         state.save(update_fields=["ml_score"])
 
     return Response({"ok": True})
+
+from rest_framework.views import APIView
+class NotificationAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        notif_type = request.query_params.get("type")
+
+        if not notif_type:
+            return Response({"error": "type required"}, status=400)
+
+        data = calculate_analytics(request.user, notif_type)
+
+        return Response(data)

@@ -1,3 +1,6 @@
+import os
+from time import time
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
@@ -137,7 +140,7 @@ class CustomTokenRefreshView(TokenRefreshView):
 @throttle_classes([])
 def me(request):
     user = request.user
-    serializer = UserSerializer(user)
+    serializer = UserSerializer(user, context={"request": request})
     return Response(serializer.data)
 
 from google.oauth2 import id_token
@@ -156,7 +159,7 @@ class GoogleLoginView(APIView):
             payload = id_token.verify_oauth2_token(
                 token,
                 requests.Request(),
-                "<YOUR_GOOGLE_WEB_CLIENT_ID>"
+                settings.GOOGLE_WEB_ID
             )
         except Exception:
             return Response({"error": "Invalid Google token"}, status=400)
@@ -184,3 +187,29 @@ class GoogleLoginView(APIView):
             "access": str(refresh.access_token),
             "user": UserSerializer(user).data
         })
+
+class UploadProfilePhotoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        profile = request.user.profile
+
+        if "dp" not in request.FILES:
+            return Response({"error":"No file"}, status=400)
+        
+        file = request.FILES["dp"]
+
+        ext = os.path.splitext(file.name)[1]
+        if not ext:
+            ext = ".jpg"
+
+        file.name = f"{request.user.username}_{int(time())}{ext}"
+        
+        if profile.dp:
+            profile.dp.delete(save=False)
+        
+        profile.dp = file
+        profile.save()
+
+        serializer = UserSerializer(request.user, context={"request":request})
+        return Response(serializer.data)

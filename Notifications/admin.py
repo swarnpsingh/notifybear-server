@@ -108,9 +108,10 @@ class NotificationEventAdmin(admin.ModelAdmin):
         "post_time",
         "user_count",
         "interaction_count",
-        "created_at"
+        "created_at",
+        "type"
     )
-    list_filter = ("post_time", "created_at", "app__package_name", "app__user")
+    list_filter = ("post_time", "created_at", "app__package_name", "app__user", "type")
     search_fields = (
         "title",
         "text",
@@ -221,7 +222,8 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         "opened_at",
         "dismissed_at",
         "notification_event__app__package_name",
-        "user"
+        "user",
+        "notification_event__type"
     )
     search_fields = (
         "user__email",
