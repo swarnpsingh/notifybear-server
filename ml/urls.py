@@ -1,8 +1,11 @@
 from django.urls import path
-
-from ml.views import train_model_for_user, retrain_model
+from ml.views import train_model
 
 urlpatterns = [
-    path("train_model/", train_model_for_user, name="train_model_for_user"),
-    path("retrain_model/", retrain_model, name="retrain_model"),
+    # New consolidated endpoint
+    path("train/", train_model, name="train"),
+
+    # Backward compatibility for existing Android clients
+    path("train_model/", train_model, name="train_model_legacy"),
+    path("retrain_model/", train_model, name="retrain_model_legacy"),
 ]
