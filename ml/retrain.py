@@ -42,7 +42,7 @@ class ModelRetrainer:
         metrics = {"samples": len(X)}
 
         clf = NotificationClassifier()
-        if len(X) < 50:
+        if len(X) < 0:
             logger.info("Not enough data to train: %d samples", len(X))
             return metrics, None
 
