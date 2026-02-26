@@ -8,6 +8,11 @@ from .features import FeatureEngineer
 
 logger = logging.getLogger(__name__)
 
+INIT_MODEL_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "init_models",
+    "init.onnx"
+)
 
 class ModelRetrainer:
     MIN_RETRAIN_INTERVAL = timedelta(hours=6)
@@ -42,9 +47,14 @@ class ModelRetrainer:
         metrics = {"samples": len(X)}
 
         clf = NotificationClassifier()
-        if len(X) < 0:
-            logger.info("Not enough data to train: %d samples", len(X))
-            return metrics, None
+        if len(X) < 50:
+            logger.info("Not enough data (%d). Returning cold-start model.", len(X))
+
+            if os.path.exists(INIT_MODEL_PATH):
+                return metrics, INIT_MODEL_PATH
+            else:
+                logger.error("init.onnx not found!")
+                return metrics, None
 
         clf.train(X, y)
 

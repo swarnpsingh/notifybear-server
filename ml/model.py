@@ -37,8 +37,8 @@ class NotificationClassifier:
         # Ensure labels are strictly binary 0 or 1
         y = np.array(y, dtype=int) 
         
-        if len(X) < 0:
-            logger.warning("Not enough data to train. Skipping.")
+        if len(X) == 0:
+            logger.warning("No data. Skipping.")
             return
 
         logger.info(f"Training on {len(X)} samples...")
