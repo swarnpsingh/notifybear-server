@@ -1,7 +1,7 @@
 import joblib
 import numpy as np
 import logging
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 
 # ONNX Imports
 try:
@@ -21,14 +21,19 @@ class NotificationClassifier:
         self.onnx_path = model_path.replace(".pkl", ".onnx")
         
         # Classifier with balanced weights for extreme data skew
-        self.model = HistGradientBoostingClassifier(
-            learning_rate=0.05,
-            max_iter=300,
-            max_depth=6,
-            l2_regularization=1.0,
-            early_stopping=True,
+        # self.model = HistGradientBoostingClassifier(
+        #     learning_rate=0.05,
+        #     max_iter=300,
+        #     max_depth=6,
+        #     l2_regularization=1.0,
+        #     early_stopping=True,
+        #     random_state=42,
+        #     class_weight='balanced'
+        # )
+        self.model = LogisticRegression(
+            max_iter=500,
+            class_weight='balanced',
             random_state=42,
-            class_weight='balanced'
         )
         self.is_trained = False
 
@@ -72,7 +77,12 @@ class NotificationClassifier:
         initial_type = [('float_input', FloatTensorType([None, n_features]))]
 
         try:
-            onnx_model = to_onnx(self.model, initial_types=initial_type, target_opset=12)
+            onnx_model = to_onnx(
+                self.model,
+                initial_types=[('input', FloatTensorType([None, n_features]))],
+                target_opset=12,
+                options={id(self.model): {"zipmap": False}}
+            )
             with open(self.onnx_path, "wb") as f:
                 f.write(onnx_model.SerializeToString())
             logger.info(f"ONNX model saved to {self.onnx_path}")
