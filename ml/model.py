@@ -81,7 +81,12 @@ class NotificationClassifier:
                 self.model,
                 initial_types=[('input', FloatTensorType([None, n_features]))],
                 target_opset=12,
-                options={id(self.model): {"zipmap": False}}
+                options={
+                    id(self.model): {
+                        "zipmap": False,
+                        "nocl": True
+                    }
+                }
             )
             with open(self.onnx_path, "wb") as f:
                 f.write(onnx_model.SerializeToString())
