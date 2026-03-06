@@ -2,6 +2,8 @@ import joblib
 import numpy as np
 import logging
 from sklearn.linear_model import LogisticRegression
+import onnx
+from onnx import helper, TensorProto
 
 # ONNX Imports
 try:
@@ -69,32 +71,85 @@ class NotificationClassifier:
         joblib.dump(self.model, self.model_path)
         logger.info(f"Python model saved to {self.model_path}")
 
+    # def save_onnx(self):
+    #     if not ONNX_AVAILABLE: return
+    #     if not self.is_trained: return
+
+    #     n_features = len(config.FEATURE_NAMES)
+    #     initial_type = [('float_input', FloatTensorType([None, n_features]))]
+
+    #     try:
+    #         onnx_model = to_onnx(
+    #             self.model,
+    #             initial_types=[('input', FloatTensorType([None, n_features]))],
+    #             target_opset=12,
+    #             options={
+    #                 id(self.model): {
+    #                     "zipmap": False,
+    #                     "nocl": True
+    #                 }
+    #             }
+    #         )
+    #         with open(self.onnx_path, "wb") as f:
+    #             f.write(onnx_model.SerializeToString())
+    #         logger.info(f"ONNX model saved to {self.onnx_path}")
+    #         logger.info(onnx_model.graph)
+    #     except Exception as e:
+    #         logger.error(f"Failed to export ONNX: {e}")
+
     def save_onnx(self):
-        if not ONNX_AVAILABLE: return
-        if not self.is_trained: return
+        if not self.is_trained:
+            return
 
-        n_features = len(config.FEATURE_NAMES)
-        initial_type = [('float_input', FloatTensorType([None, n_features]))]
+        coef = self.model.coef_.astype(np.float32)
+        intercept = self.model.intercept_.astype(np.float32)
 
-        try:
-            onnx_model = to_onnx(
-                self.model,
-                initial_types=[('input', FloatTensorType([None, n_features]))],
-                target_opset=12,
-                options={
-                    id(self.model): {
-                        "zipmap": False,
-                        "nocl": True
-                    }
-                }
-            )
-            with open(self.onnx_path, "wb") as f:
-                f.write(onnx_model.SerializeToString())
-            logger.info(f"ONNX model saved to {self.onnx_path}")
-            logger.info(onnx_model.graph)
-        except Exception as e:
-            logger.error(f"Failed to export ONNX: {e}")
+        n_features = coef.shape[1]
 
+        input_tensor = helper.make_tensor_value_info(
+            "input",
+            TensorProto.FLOAT,
+            [None, n_features]
+        )
+
+        output_tensor = helper.make_tensor_value_info(
+            "probabilities",
+            TensorProto.FLOAT,
+            [None, 1]
+        )
+
+        W = helper.make_tensor(
+            "W",
+            TensorProto.FLOAT,
+            [n_features, 1],
+            coef.reshape(-1)
+        )
+
+        B = helper.make_tensor(
+            "B",
+            TensorProto.FLOAT,
+            [1],
+            intercept
+        )
+
+        matmul = helper.make_node("MatMul", ["input", "W"], ["wx"])
+        add = helper.make_node("Add", ["wx", "B"], ["logits"])
+        sigmoid = helper.make_node("Sigmoid", ["logits"], ["probabilities"])
+
+        graph = helper.make_graph(
+            [matmul, add, sigmoid],
+            "notifybear_model",
+            [input_tensor],
+            [output_tensor],
+            [W, B],
+        )
+
+        model = helper.make_model(graph)
+
+        onnx.save(model, self.onnx_path)
+
+        logger.info("ONNX model saved to %s", self.onnx_path)
+    
     def load(self):
         try:
             self.model = joblib.load(self.model_path)
