@@ -76,6 +76,7 @@ class NotificationClassifier:
             with open(self.onnx_path, "wb") as f:
                 f.write(onnx_model.SerializeToString())
             logger.info(f"ONNX model saved to {self.onnx_path}")
+            logger.info(onnx_model.graph)
         except Exception as e:
             logger.error(f"Failed to export ONNX: {e}")
 
