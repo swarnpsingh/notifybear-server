@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     'Accounts',
     'Notifications',
     'ml',
-    'Logs',
+    'Logs.apps.LogsConfig',
 ]
 
 REST_FRAMEWORK = {
