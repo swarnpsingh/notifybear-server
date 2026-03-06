@@ -144,7 +144,12 @@ class NotificationClassifier:
             [W, B],
         )
 
-        model = helper.make_model(graph)
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 12)]
+        )
+
+        model.ir_version = 7
 
         onnx.save(model, self.onnx_path)
 
