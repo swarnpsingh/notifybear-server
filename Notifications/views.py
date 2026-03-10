@@ -466,7 +466,7 @@ def bookmarked_notifications(request):
     qs = UserNotificationState.objects.filter(
         user=request.user,
         is_bookmarked=True
-    ).select_related("notification_event", "notification__app")
+    ).select_related("notification_event", "notification_event__app")
 
     serializer = UserNotificationStateSerializer(qs, many=True)
 
