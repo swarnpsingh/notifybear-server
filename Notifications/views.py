@@ -446,7 +446,7 @@ def toggle_bookmark(request):
     try:
         state = UserNotificationState.objects.get(
             user=request.user,
-            notification_id=notif_id
+            notification_event_id=notif_id
         )
 
         state.is_bookmarked = not state.is_bookmarked
