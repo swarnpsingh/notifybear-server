@@ -213,3 +213,30 @@ class UploadProfilePhotoView(APIView):
 
         serializer = UserSerializer(request.user, context={"request":request})
         return Response(serializer.data)
+
+class UpdateProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+
+        user = request.user
+        profile = user.profile
+
+        serializer = UserSerializer(
+            user,
+            data=request.data,
+            partial=True,
+            context={"request": request}
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            address = request.data.get("address")
+            if address is not None:
+                profile.address = address
+                profile.save()
+
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=400)
