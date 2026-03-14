@@ -66,6 +66,10 @@ class UserSignupSerializer(serializers.ModelSerializer):
 
     def validate_username(self, value):
         value = value.strip()
+        if " " in value:
+            raise serializers.ValidationError([
+                {"code": "username_invalid", "message": "Username cannot contain spaces."}
+            ])
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError([
                 {"code": "username_taken", "message": "Username is already taken."}
