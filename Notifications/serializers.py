@@ -204,7 +204,7 @@ class IngestInteractionSerializer(serializers.Serializer):
     removed_at = serializers.DateTimeField()
     raw_reason = serializers.IntegerField(required=False, allow_null=True)
     dismissed_by = serializers.ChoiceField(
-            choices=["user", "app"],
+            choices=["user", "app", "notifybear"],
             required=False,
             allow_null=True
     )
