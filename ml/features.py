@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import pandas as pd
 from django.utils import timezone
@@ -9,88 +10,90 @@ from Notifications.models import (
     UserNotificationState,
 )
 
-
 class FeatureEngineer:
     @staticmethod
     def extract(notification, user_stats, context):
         """
         Converts a notification + stats into the highly optimized 16-feature vector.
+        SYNCED WITH V14 EDGE ONNX MODEL.
         """
         dt = notification.post_time
-        title = notification.title or ""
-        text = notification.text or ""
-        full_text = f"{title} {text}".lower().strip()
+        
+        # 1. Clean and combine text (Match Edge logic exactly)
+        safe_title = str(notification.title or "").strip().lower()
+        safe_body = str(notification.text or "").strip().lower()
+        full_text = f"{safe_title} {safe_body}".strip()
+
+        text_length = float(len(full_text)) if len(full_text) > 0 else 5.0
+        if len(full_text) == 0:
+            full_text = "empty"
 
         # --- TIME ---
         raw_hour = dt.hour + (dt.minute / 60.0)
-        hour_sin = np.sin(2 * np.pi * raw_hour / 24)
-        hour_cos = np.cos(2 * np.pi * raw_hour / 24)
+        hour_sin = float(np.sin(2 * np.pi * raw_hour / 24.0))
+        hour_cos = float(np.cos(2 * np.pi * raw_hour / 24.0))
 
         # --- CTR ---
-        channel_ctr = user_stats.get("channel_ctr", 0.1)
-        app_ctr = user_stats.get(f"app_{notification.app_id}_ctr", 0.1)
+        channel_ctr = float(user_stats.get("channel_ctr", 0.0))
+        app_ctr = float(user_stats.get(f"app_{notification.app_id}_ctr", 0.0))
 
         # --- CONTEXT ---
         is_active_session = 1.0 if context.get("sec_since_last_action", 86400) < 180 else 0.0
-        time_since_last = context.get("time_since_last_notif_sec", 86400.0)
+        time_since_last = float(context.get("time_since_last_notif_sec", 0.0))
 
-        # --- TEXT ---
-        text_len = len(full_text)
+        # --- TEXT COMPLEXITY ---
+        digit_density = sum(c.isdigit() for c in full_text) / text_length
+        exclamation_density = full_text.count('!') / text_length
+        
+        body_len = float(len(safe_body)) if len(safe_body) > 0 else 1.0
+        title_body_ratio = len(safe_title) / body_len
 
-        digit_density = sum(c.isdigit() for c in full_text) / (text_len + 1e-5)
-        exclamation_density = full_text.count('!') / (text_len + 1e-5)
-        title_body_ratio = len(title) / (len(text) + 1e-5)
-
-        # --- SEMANTIC FLAGS ---
-        def contains(words):
-            return float(any(w in full_text for w in words))
-
-        is_otp = contains(["otp", "code", "verification"])
-        is_transaction = contains(["debited", "credited", "paid", "txn"])
-        is_message = contains(["message", "chat", "call"])
-        is_promo = contains(["sale", "offer", "discount"])
-        is_urgent = contains(["urgent", "alert", "important"])
+        # --- SEMANTIC FLAGS (REGEX) ---
+        # Using exact patterns from the Android edge to prevent training-serving skew
+        is_otp = 1.0 if re.search(r'\b\d{4,6}\b|otp|verification|code', full_text) else 0.0
+        is_transaction = 1.0 if re.search(r'spent|debited|credited|transaction|a/c|bank|balance|rs\.|inr|payment', full_text) else 0.0
+        is_urgent = 1.0 if re.search(r'urgent|immediate|action required|important|alert', full_text) else 0.0
+        is_promo = 1.0 if re.search(r'off|sale|discount|deal|limited time|promo', full_text) else 0.0
+        
+        # Message checks the app_id/package_name, not the text
+        safe_app_id = str(notification.app_id or "").lower()
+        is_message = 1.0 if re.search(r'whatsapp|telegram|messenger|messaging', safe_app_id) else 0.0
 
         # --- VOLUME ---
-        notifs_24h = user_stats.get("notifs_past_24h", 1.0)
+        notifs_24h = float(user_stats.get("notifs_past_24h", 0.0))
 
+        # --- THE V14 FEATURE VECTOR ---
+        # Order is strictly enforced for ONNX compatibility
         return np.array([
-            hour_sin,
-            hour_cos,
-            channel_ctr,
-            app_ctr,
-            is_active_session,
-            time_since_last,
-            digit_density,
-            exclamation_density,
-            title_body_ratio,
-            notifs_24h,
-            is_otp,
-            is_transaction,
-            is_message,
-            is_promo,
-            is_urgent,
-            text_len
+            hour_sin,               # 1
+            hour_cos,               # 2
+            channel_ctr,            # 3
+            app_ctr,                # 4
+            is_active_session,      # 5
+            time_since_last,        # 6
+            digit_density,          # 7
+            exclamation_density,    # 8
+            title_body_ratio,       # 9
+            notifs_24h,             # 10
+            is_otp,                 # 11
+            is_transaction,         # 12
+            is_message,             # 13
+            is_promo,               # 14
+            is_urgent,              # 15
+            text_length             # 16
         ], dtype=np.float32)
 
     @staticmethod
     def fetch_training_rows(user, apps=None, lookback_days=30):
         """
         Yield tuples (feature_vector, label) for the given user.
-
-        Rules enforced:
-        - Labels computed via ml.service.service.calculate_label
-        - Rows with label None are dropped
-        - Uses Django ORM to fetch NotificationEvent and UserNotificationState
-        - `apps` may be a list of app ids or package_name strings
         """
-        # Lazy import to avoid circular imports at module import time
         from .service import service as priority_service
         from datetime import timedelta
 
         cutoff = timezone.now() - timedelta(days=lookback_days)
 
-        # 1. Optimized Batch Query for CTRs (single query for all history)
+        # 1. Optimized Batch Query for CTRs
         stats = (
             NotificationEvent.objects.filter(app__user=user)
             .values('app_id', 'channel_id')
@@ -105,7 +108,7 @@ class FeatureEngineer:
             key = f"{s['app_id']}_{s['channel_id']}"
             ctr_map[key] = (s['clicks'] / s['sent']) if s['sent'] > 0 else config.GLOBAL_OPEN_RATE_PRIOR
 
-        # 2. Fetch all valid notification logs in one go (prefetch user_states)
+        # 2. Fetch all valid logs
         qs = (
             NotificationEvent.objects.filter(app__user=user, post_time__gte=cutoff)
             .select_related('app')
@@ -118,16 +121,18 @@ class FeatureEngineer:
         if not notifications:
             return
 
-        # 3. Use Pandas for high-speed rolling calculations
+        # 3. Pandas Rolling Calcs
         df = pd.DataFrame([{'id': n.id, 'time': n.post_time} for n in notifications])
         if df.empty:
             return
 
         df['time'] = pd.to_datetime(df['time'])
         df['time_diff'] = df['time'].diff().dt.total_seconds().fillna(86400.0)
-        df['rolling_24h'] = df.rolling('1D', on='time')['id'].count().fillna(0)
+        
+        # Subtracted 1 to exclude the current notification from the "past" count
+        df['rolling_24h'] = df.rolling('1D', on='time')['id'].count().fillna(1.0) - 1.0 
 
-        # 4. Final loop with zero DB queries inside
+        # 4. Final loop yielding feature vectors and labels
         for i, notif in enumerate(notifications):
             state = notif.user_states.first() if hasattr(notif, 'user_states') else None
             label = priority_service.calculate_label(
@@ -138,7 +143,6 @@ class FeatureEngineer:
             if label is None:
                 continue
 
-            # Precomputed stats
             channel_key = f"{notif.app_id}_{notif.channel_id}"
             app_ctr = ctr_map.get(channel_key, config.GLOBAL_OPEN_RATE_PRIOR)
 
@@ -150,7 +154,14 @@ class FeatureEngineer:
 
             context = {
                 'time_since_last_notif_sec': float(df.iloc[i]['time_diff']),
+                # In a real system, you might fetch actual session states, falling back to 86400
+                'sec_since_last_action': 86400 
             }
 
             vector = FeatureEngineer.extract(notif, user_stats, context)
+            
+            # Target hacking replication: Force financial/OTP labels to 1.0
+            if vector[10] == 1.0 or vector[11] == 1.0:
+                label = 1.0
+                
             yield vector, float(label)
