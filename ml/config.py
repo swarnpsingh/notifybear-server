@@ -1,13 +1,21 @@
 # The precise 8-feature V5 Edge Vector
 FEATURE_NAMES = [
-    "raw_hour", 
-    "channel_historical_ctr", 
-    "is_active_session", 
-    "time_since_last_notif_sec", 
-    "digit_density", 
-    "title_body_ratio", 
-    "exclamation_density", 
-    "notifs_past_24h"
+    "hour_sin",
+    "hour_cos",
+    "channel_ctr",
+    "app_ctr",
+    "is_active_session",
+    "time_since_last_notif",
+    "digit_density",
+    "exclamation_density",
+    "title_body_ratio",
+    "notifs_past_24h",
+    "is_otp",
+    "is_transaction",
+    "is_message",
+    "is_promo",
+    "is_urgent",
+    "text_length",
 ]
 
 # Bayesian Smoothing Constants

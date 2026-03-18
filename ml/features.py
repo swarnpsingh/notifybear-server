@@ -14,61 +14,63 @@ class FeatureEngineer:
     @staticmethod
     def extract(notification, user_stats, context):
         """
-        Converts a notification + stats into the highly optimized 8-feature V5 vector.
+        Converts a notification + stats into the highly optimized 16-feature vector.
         """
         dt = notification.post_time
         title = notification.title or ""
         text = notification.text or ""
         full_text = f"{title} {text}".lower().strip()
-        
-        # --- 1. Linear Time ---
+
+        # --- TIME ---
         raw_hour = dt.hour + (dt.minute / 60.0)
-        
-        # --- 2. Channel Micro-Reputation (Smoothed) ---
-        channel_id = getattr(notification, 'channel_id', 'default')
-        channel_key = f"channel_{notification.app_id}_{channel_id}"
-        
-        ch_sent = user_stats.get(f"{channel_key}_sent", 0)
-        ch_clicks = user_stats.get(f"{channel_key}_clicks", 0)
-        
-        # Fallback to overall app CTR if the channel is entirely new
-        app_ctr = user_stats.get(f"app_{notification.app_id}_ctr", config.GLOBAL_OPEN_RATE_PRIOR)
-        
-        numerator = ch_clicks + (config.SMOOTHING_WEIGHT * app_ctr)
-        denominator = ch_sent + config.SMOOTHING_WEIGHT
-        channel_historical_ctr = numerator / denominator
+        hour_sin = np.sin(2 * np.pi * raw_hour / 24)
+        hour_cos = np.cos(2 * np.pi * raw_hour / 24)
 
-        # --- 3. Stateful Context ---
-        sec_since_action = context.get("sec_since_last_action", 86400.0)
-        is_active_session = 1.0 if sec_since_action < 180.0 else 0.0
-        
-        time_since_last_notif_sec = context.get("time_since_last_notif_sec", 86400.0)
+        # --- CTR ---
+        channel_ctr = user_stats.get("channel_ctr", 0.1)
+        app_ctr = user_stats.get(f"app_{notification.app_id}_ctr", 0.1)
 
-        # --- 4. Structural Meta-Features ---
+        # --- CONTEXT ---
+        is_active_session = 1.0 if context.get("sec_since_last_action", 86400) < 180 else 0.0
+        time_since_last = context.get("time_since_last_notif_sec", 86400.0)
+
+        # --- TEXT ---
         text_len = len(full_text)
-        
-        digit_count = sum(c.isdigit() for c in full_text)
-        digit_density = digit_count / (text_len + 1e-5)
-        
-        title_body_ratio = len(title) / (len(text) + 1e-5)
-        
-        excl_count = full_text.count('!')
-        exclamation_density = excl_count / (text_len + 1e-5)
-        
-        # --- 5. Rolling Volume ---
-        notifs_past_24h = user_stats.get("notifs_past_24h", 1.0)
 
-        # --- Return Vector ---
-        # MUST exactly match config.FEATURE_NAMES order
+        digit_density = sum(c.isdigit() for c in full_text) / (text_len + 1e-5)
+        exclamation_density = full_text.count('!') / (text_len + 1e-5)
+        title_body_ratio = len(title) / (len(text) + 1e-5)
+
+        # --- SEMANTIC FLAGS ---
+        def contains(words):
+            return float(any(w in full_text for w in words))
+
+        is_otp = contains(["otp", "code", "verification"])
+        is_transaction = contains(["debited", "credited", "paid", "txn"])
+        is_message = contains(["message", "chat", "call"])
+        is_promo = contains(["sale", "offer", "discount"])
+        is_urgent = contains(["urgent", "alert", "important"])
+
+        # --- VOLUME ---
+        notifs_24h = user_stats.get("notifs_past_24h", 1.0)
+
         return np.array([
-            raw_hour, 
-            channel_historical_ctr, 
-            is_active_session, 
-            time_since_last_notif_sec, 
-            digit_density, 
-            title_body_ratio, 
-            exclamation_density, 
-            notifs_past_24h
+            hour_sin,
+            hour_cos,
+            channel_ctr,
+            app_ctr,
+            is_active_session,
+            time_since_last,
+            digit_density,
+            exclamation_density,
+            title_body_ratio,
+            notifs_24h,
+            is_otp,
+            is_transaction,
+            is_message,
+            is_promo,
+            is_urgent,
+            text_len
         ], dtype=np.float32)
 
     @staticmethod
@@ -142,6 +144,7 @@ class FeatureEngineer:
 
             user_stats = {
                 'notifs_past_24h': float(df.iloc[i]['rolling_24h']),
+                'channel_ctr': float(app_ctr),
                 f"app_{notif.app_id}_ctr": float(app_ctr),
             }
 
