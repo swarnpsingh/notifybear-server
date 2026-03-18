@@ -230,7 +230,10 @@ class UserNotificationState(models.Model):
         """Mark notification as opened and update is_read."""
         self.opened_at = timestamp or timezone.now()
         self.is_read = True
-        self.save(update_fields=["opened_at", "is_read", "last_updated"])
+        try:
+            self.save(update_fields=["opened_at", "is_read", "last_updated"])
+        except Exception:
+            self.save()
 
     def mark_dismissed(self, dismissed_by, timestamp=None):
         self.dismissed_at = timestamp or timezone.now()

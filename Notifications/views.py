@@ -242,6 +242,8 @@ def ingest_interaction(request):
             # user dismiss = mark read
             if dismissed_by == "user" and not state.is_read:
                 state.mark_opened(timestamp=timestamp)
+            if dismissed_by == "notifybear":
+                pass
 
         # Log event
         InteractionEvent.objects.create(
@@ -501,3 +503,24 @@ def bookmarked_notifications(request):
     serializer = UserNotificationStateSerializer(qs, many=True)
 
     return Response(serializer.data)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def clear_notifications(request):
+
+    clear_type = request.data.get("type")
+    hours = request.data.get("hours")
+
+    qs = UserNotificationState.objects.filter(user=request.user)
+
+    if clear_type == "all":
+        qs.delete()
+
+    elif clear_type == "time":
+        cutoff = timezone.now() - timedelta(hours=int(hours))
+        qs.filter(notification_event__post_time__lt=cutoff).delete()
+
+    elif clear_type == "low_priority":
+        qs.filter(ml_score__lt=0.3).delete()
+
+    return Response({"status": "ok"})
