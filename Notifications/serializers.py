@@ -151,6 +151,7 @@ class UserNotificationStateCompactSerializer(serializers.ModelSerializer):
             "is_read",
             "opened_at",
             "dismissed_at",
+            "dismissed_by",
             "ml_score",
             "reaction_time_seconds",
         ]

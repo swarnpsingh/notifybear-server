@@ -146,6 +146,10 @@ class NotificationMessage(models.Model):
         preview = (self.message_text or "")[:30]
         return f"{self.sender}: {preview}"
 
+class DismissedBy(models.TextChoices):
+    USER = "user", "User"
+    NOTIFYBEAR = "notifybear", "NotifyBear"
+    APP = "app", "App"
 
 class UserNotificationState(models.Model):
     """
@@ -171,6 +175,14 @@ class UserNotificationState(models.Model):
     # User interaction timestamps (mutable)
     opened_at = models.DateTimeField(null=True, blank=True, db_index=True)
     dismissed_at = models.DateTimeField(null=True, blank=True)
+    dismissed_by = models.CharField(
+        max_length=20,
+        choices=DismissedBy.choices,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Who dismissed the notification"
+    )
     snoozed_until = models.DateTimeField(
         null=True, 
         blank=True,
@@ -224,6 +236,15 @@ class UserNotificationState(models.Model):
         """Mark notification as dismissed."""
         self.dismissed_at = timestamp or timezone.now()
         self.save(update_fields=["dismissed_at", "last_updated"])
+
+    def mark_dismissed(self, dismissed_by, timestamp=None):
+        self.dismissed_at = timestamp or timezone.now()
+        self.dismissed_by = dismissed_by
+        self.save(update_fields=["dismissed_at", "dismissed_by", "last_updated"])
+        
+    @property
+    def is_auto_dismissed(self):
+        return self.dismissed_by == self.DismissedBy.NOTIFYBEAR
 
 
 class InteractionEvent(models.Model):

@@ -212,6 +212,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         "id",
         "is_read",
         "ml_score",
+        "dismissed_by",
         "is_bookmarked",
         "user_link",
         "notification_link",
@@ -220,6 +221,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "is_read",
+        "dismissed_by",
         "opened_at",
         "dismissed_at",
         "notification_event__app__package_name",
@@ -245,7 +247,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
             "fields": ("user", "notification_event")
         }),
         ("User State", {
-            "fields": ("is_read", "opened_at", "dismissed_at", "snoozed_until")
+            "fields": ("is_read", "opened_at", "dismissed_at", "dismissed_by", "snoozed_until")
         }),
         ("ML & Scoring", {
             "fields": ("ml_score",)
