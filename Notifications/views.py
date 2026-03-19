@@ -198,16 +198,13 @@ def ingest_interaction(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    try:
-        notif_event = NotificationEvent.objects.get(
-            app=app,
-            notif_key=notif_key
-        )
-    except NotificationEvent.DoesNotExist:
-        return Response(
-            {"error": "Notification not found. Ensure notification was ingested first."},
-            status=status.HTTP_404_NOT_FOUND
-        )
+    notif_event = NotificationEvent.objects.filter(
+        app=app,
+        notif_key=notif_key
+    ).order_by("-post_time").first()
+
+    if not notif_event:
+        return Response({"ok": True, "skipped": "no_event_yet"})
         
     state, _ = UserNotificationState.objects.get_or_create(
         user=request.user,
@@ -240,23 +237,32 @@ def ingest_interaction(request):
     # HANDLE DISMISS
     # -------------------------
     if dismissed_by:
-        if not state.dismissed_at or dismissed_by == "user":
-            state.mark_dismissed(
-                dismissed_by=dismissed_by,
-                timestamp=timestamp
-            )
+        if dismissed_by == "user":
+            state.dismissed_at = timestamp
+            state.dismissed_by = dismissed_by
+            state.opened_at = state.opened_at or timestamp
+            state.is_read = True
+            state.save(update_fields=[
+                "dismissed_at", "dismissed_by",
+                "opened_at", "is_read", "last_updated"
+            ])
+        else:
+            if not state.dismissed_at:
+                state.mark_dismissed(
+                    dismissed_by=dismissed_by,
+                    timestamp=timestamp
+                )
 
-            # user dismiss = mark read
-            if dismissed_by == "user" and not state.is_read:
-                state.mark_opened(timestamp=timestamp)
-            if dismissed_by == "notifybear":
-                pass
+        interaction_type = "DISMISS"
+        if dismissed_by == "user":
+            interaction_type = InteractionEvent.SWIPE
+        elif dismissed_by == "app":
+            interaction_type = InteractionEvent.APP_CANCEL
 
-        # Log event
         InteractionEvent.objects.create(
             user=request.user,
             notification_event=notif_event,
-            interaction_type="DISMISS",
+            interaction_type=interaction_type,
             timestamp=timestamp,
             raw_reason=raw_reason,
             metadata={"dismissed_by": dismissed_by},
