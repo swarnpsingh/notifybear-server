@@ -112,11 +112,12 @@ def ingest_notification(request):
     if not notif_key:
         # Generate unique key if not provided
         notif_key = f"auto_{app.id}_{timezone.now().timestamp()}"
-
+    content_hash = compute_hash(v)
     # Try to get existing notification event
     notif_event, created = NotificationEvent.objects.get_or_create(
         app=app,
         notif_key=notif_key,
+        content_hash=content_hash,
         defaults={
             "post_time": v.get("posted_at", timezone.now()),
             "title": v.get("title", ""),
@@ -132,7 +133,6 @@ def ingest_notification(request):
             "people": v.get("people"),
             "large_icon_base64": v.get("large_icon_base64"),
             "picture_base64": v.get("picture_base64"),
-            "content_hash": compute_hash(v),
         }
     )
 
