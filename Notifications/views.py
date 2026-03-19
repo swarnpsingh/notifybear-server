@@ -33,15 +33,16 @@ from .serializers import (
 import hashlib
 
 def compute_hash(v):
-    parts = [
-        v.get("title", ""),
-        v.get("text", ""),
-        v.get("big_text", ""),
-        v.get("sub_text", ""),
-        v.get("summary_text", ""),
-    ]
-    s = "|".join(str(p) for p in parts)
-    return hashlib.sha256(s.encode()).hexdigest()
+    base = ""
+    if v.get("text_lines"):
+        base = v["text_lines"]
+    elif v.get("big_text"):
+        base = v["big_text"]
+    elif v.get("text"):
+        base = v["text"]
+    else:
+        base = ""
+    return hashlib.sha256(base.encode()).hexdigest()
 
 def _get_or_create_app(user, package_name, app_label=""):
     """Ensures an App entry exists for the user + package."""
@@ -113,6 +114,12 @@ def ingest_notification(request):
         # Generate unique key if not provided
         notif_key = f"auto_{app.id}_{timezone.now().timestamp()}"
     content_hash = compute_hash(v)
+    if NotificationEvent.objects.filter(
+        app=app,
+        notif_key=notif_key,
+        content_hash=content_hash
+    ).exists():
+        return Response({"ok": True, "duplicate": True})
     # Try to get existing notification event
     notif_event, created = NotificationEvent.objects.get_or_create(
         app=app,
