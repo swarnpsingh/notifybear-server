@@ -99,7 +99,7 @@ class NotificationEvent(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("app", "notif_key")
+        unique_together = ("app", "notif_key", "content_hash")
         indexes = [
             models.Index(fields=["app", "post_time"]),
             models.Index(fields=["app", "notif_key"]),
