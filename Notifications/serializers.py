@@ -92,6 +92,7 @@ class UserNotificationStateSerializer(serializers.ModelSerializer):
             "is_read",
             "opened_at",
             "dismissed_at",
+            "dismissed_by",
             "snoozed_until",
             "ml_score",
             "reaction_time",
