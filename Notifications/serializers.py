@@ -90,6 +90,7 @@ class UserNotificationStateSerializer(serializers.ModelSerializer):
             "user",
             "notification",
             "is_read",
+            "is_bookmarked",
             "opened_at",
             "dismissed_at",
             "dismissed_by",
