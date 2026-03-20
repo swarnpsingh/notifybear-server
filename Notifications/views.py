@@ -529,7 +529,7 @@ def clear_notifications(request):
     if clear_type == "all":
         qs.delete()
 
-    elif clear_type == "time":
+    elif clear_type == "time" and hours:
         cutoff = timezone.now() - timedelta(hours=int(hours))
         qs.filter(notification_event__post_time__lt=cutoff).delete()
 
