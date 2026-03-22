@@ -318,14 +318,21 @@ class ResetPasswordView(APIView):
     permission_classes = []
 
     def post(self, request):
+        print("DATA:", request.data)
+        
         uid = request.data.get("uid")
         token = request.data.get("token")
         new_password = request.data.get("password")
+        
+        print("UID:", uid)
+        print("TOKEN:", token)
+        print("PASSWORD:", new_password)
 
         try:
             user_id = urlsafe_base64_decode(uid).decode()
             user = User.objects.get(pk=user_id)
-        except:
+        except Exception as e:
+            print("UID ERROR:", str(e))
             return Response({"error": "Invalid link"}, status=400)
 
         if not PasswordResetTokenGenerator().check_token(user, token):
