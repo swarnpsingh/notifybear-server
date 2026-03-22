@@ -320,15 +320,10 @@ class ResetPasswordView(APIView):
     permission_classes = []
 
     def post(self, request):
-        logger.error(f"DATA: {request.data}")
         
         uid = request.data.get("uid")
         token = request.data.get("token")
         new_password = request.data.get("password")
-        
-        logger.error(f"UID:{uid}")
-        logger.error(f"TOKEN:{token}")
-        logger.error(f"PASSWORD:{new_password}")
 
         try:
             user_id = urlsafe_base64_decode(uid).decode()
