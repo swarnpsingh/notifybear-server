@@ -10,12 +10,28 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from django.contrib.auth import authenticate, get_user_model
 
+from django.core.mail import EmailMessage
+import threading
+from django.template.loader import render_to_string
+
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+
 from .serializers import UserSerializer, UserSignupSerializer
 from .throttles import LoginRateThrottle
 from .utils import log_auth_event
 
 User = get_user_model()
 
+def send_html_email(to, subject, html_content):
+    email = EmailMessage(
+        subject=subject,
+        body=html_content,
+        from_email='support@notifybear.com',
+        to=[to],
+    )
+    email.content_subtype = 'html'
+    email.send()
 
 class SignupView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -24,6 +40,16 @@ class SignupView(APIView):
         serializer = UserSignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            if user.email:
+                html = render_to_string(
+                    "welcome.html",
+                    {"username": user.username}
+                )
+
+                threading.Thread(
+                    target=send_html_email,
+                    args=(user.email, "Welcome to NotifyBear 🐻", html)
+                ).start()
             refresh = RefreshToken.for_user(user)
             # log
             log_auth_event("login_success", request=request, user=user, username=user.username, detail={"via": "signup"})
@@ -178,6 +204,16 @@ class GoogleLoginView(APIView):
                 "last_name": last
             }
         )
+        
+        if created:
+            html = render_to_string(
+                "welcome.html",
+                {"username": first}
+            )
+            threading.Thread(
+                target=send_html_email,
+                args=(user.email, "Welcome to NotifyBear 🐻", html)
+            ).start()
 
         # Issue our JWT tokens
         refresh = RefreshToken.for_user(user)
@@ -240,3 +276,79 @@ class UpdateProfileView(APIView):
             return Response(serializer.data)
 
         return Response(serializer.errors, status=400)
+
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ForgotPasswordView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        email = request.data.get("email")
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Don't reveal user existence (security)
+            return Response({"message": "If account exists, email sent"}, status=200)
+
+        token = PasswordResetTokenGenerator().make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+        reset_link = request.build_absolute_uri(f"/accounts/reset-password/{uid}/{token}/")
+
+        html = render_to_string("reset_password_email.html", {
+            "reset_link": reset_link,
+            "username": user.username
+        })
+
+        threading.Thread(
+            target=send_html_email,
+            args=(email, "Reset your password", html)
+        ).start()
+
+        return Response({"message": "If account exists, email sent"}, status=200)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ResetPasswordView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        uid = request.data.get("uid")
+        token = request.data.get("token")
+        new_password = request.data.get("password")
+
+        try:
+            user_id = urlsafe_base64_decode(uid).decode()
+            user = User.objects.get(pk=user_id)
+        except:
+            return Response({"error": "Invalid link"}, status=400)
+
+        if not PasswordResetTokenGenerator().check_token(user, token):
+            return Response({"error": "Invalid or expired token"}, status=400)
+        
+        try:
+            validate_password(new_password)
+        except ValidationError as e:
+            return Response({"error": list(e.messages)}, status=400)
+        
+        user.set_password(new_password)
+        user.save()
+        user.auth_token_set.all().delete()
+
+        return Response({"message": "Password reset successful"}, status=200)
+
+from django.shortcuts import render
+
+def forgot_password_page(request):
+    return render(request, "forgot_password.html")
+
+def reset_password_page(request, uid, token):
+    return render(request, "reset_password.html", {
+        "uid": uid,
+        "token": token
+    })
