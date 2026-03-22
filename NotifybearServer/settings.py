@@ -67,7 +67,10 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "login": "25/minute",
         "notif_ingest": "2000/hour",
-    }
+    },
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
 }
 from datetime import timedelta
 SIMPLE_JWT = {
