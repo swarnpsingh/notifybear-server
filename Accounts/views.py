@@ -282,6 +282,8 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+import logging
+logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ForgotPasswordView(APIView):
@@ -318,21 +320,21 @@ class ResetPasswordView(APIView):
     permission_classes = []
 
     def post(self, request):
-        print("DATA:", request.data)
+        logger.error("DATA:", request.data)
         
         uid = request.data.get("uid")
         token = request.data.get("token")
         new_password = request.data.get("password")
         
-        print("UID:", uid)
-        print("TOKEN:", token)
-        print("PASSWORD:", new_password)
+        logger.error("UID:", uid)
+        logger.error("TOKEN:", token)
+        logger.error("PASSWORD:", new_password)
 
         try:
             user_id = urlsafe_base64_decode(uid).decode()
             user = User.objects.get(pk=user_id)
         except Exception as e:
-            print("UID ERROR:", str(e))
+            logger.error("UID ERROR:", str(e))
             return Response({"error": "Invalid link"}, status=400)
 
         if not PasswordResetTokenGenerator().check_token(user, token):
