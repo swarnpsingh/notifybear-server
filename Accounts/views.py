@@ -338,7 +338,6 @@ class ResetPasswordView(APIView):
         
         user.set_password(new_password)
         user.save()
-        user.auth_token_set.all().delete()
 
         return Response({"message": "Password reset successful"}, status=200)
 
