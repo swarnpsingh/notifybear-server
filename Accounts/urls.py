@@ -2,6 +2,7 @@ from django.urls import path
 from .views import SignupView, LoginView, LogoutView, CustomTokenRefreshView
 from .views import me, GoogleLoginView, UploadProfilePhotoView, UpdateProfileView
 from .views import ForgotPasswordView, ResetPasswordView, forgot_password_page, reset_password_page
+from .views import DeleteAccountView
 
 urlpatterns = [
     path("signup/", SignupView.as_view(), name="signup"),
@@ -12,6 +13,7 @@ urlpatterns = [
     path("google-login/", GoogleLoginView.as_view(), name="google_login"),
     path("profile/upload-photo/", UploadProfilePhotoView.as_view(), name="upload_profile_photo"),
     path("update-profile/", UpdateProfileView.as_view(), name="update_profile"),
+    path("delete-account", DeleteAccountView.as_view(), name="delete_account"),
     
     path('auth/forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('auth/reset-password/', ResetPasswordView.as_view(), name='reset-password'),

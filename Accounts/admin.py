@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, UserProfile, AuthAuditLog
+from .models import User, UserProfile, AuthAuditLog, DeletedAccount
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -19,6 +19,20 @@ class AuthAuditLogAdmin(admin.ModelAdmin):
     search_fields = ("username", "ip", "user__username")
     ordering = ("-timestamp",)
     readonly_fields = ("event", "username", "user", "ip", "user_agent", "timestamp", "detail")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+@admin.register(DeletedAccount)
+class DeletedAccountAdmin(admin.ModelAdmin):
+    list_display = ('email', 'deleted_at')
+    list_filter = ('deleted_at',)
+    search_fields = ('email',)
+    readonly_fields = ('email', 'reasons', 'other_reason', 'deleted_at')
+    ordering = ('-deleted_at',)
 
     def has_add_permission(self, request):
         return False

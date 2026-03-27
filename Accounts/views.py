@@ -20,6 +20,7 @@ from django.utils.decorators import method_decorator
 from .serializers import UserSerializer, UserSignupSerializer
 from .throttles import LoginRateThrottle
 from .utils import log_auth_event
+from .models import DeletedAccount
 
 User = get_user_model()
 
@@ -276,6 +277,153 @@ class UpdateProfileView(APIView):
             return Response(serializer.data)
 
         return Response(serializer.errors, status=400)
+
+class DeleteAccountView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [LoginRateThrottle]
+
+    def post(self, request):
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+        reasons = request.data.get("reasons")
+        messages = request.data.get("messages")
+        other_reason = (request.data.get("other_reason") or "").strip()
+
+        if not username or not password:
+            return Response(
+                {"detail": "username and password are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        auth_username = username
+        if "@" in username:
+            try:
+                auth_username = User.objects.get(email=username.lower()).username
+            except User.DoesNotExist:
+                auth_username = None
+
+        user = authenticate(username=auth_username, password=password)
+
+        if user is None or not user.is_active:
+            log_auth_event(
+                "delete_account_failed",
+                request=request,
+                username=username,
+                detail={"reason": "invalid_credentials"},
+            )
+            return Response(
+                {"detail": "Invalid username or password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Support both `reasons` (preferred) and legacy frontend `messages` payloads.
+        if reasons is None and messages is not None:
+            reasons = messages
+
+        if reasons is None:
+            reasons = []
+
+        if not isinstance(reasons, list):
+            return Response(
+                {"detail": "reasons/messages must be an array"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valid_reasons = {
+            "i_no_longer_use_notifybear",
+            "too_many_notifications",
+            "found_better_alternative",
+            "privacy_concerns",
+            "other",
+        }
+        reason_label_map = {
+            "i no longer use notifybear": "i_no_longer_use_notifybear",
+            "i am getting too many notifications": "too_many_notifications",
+            "i found a better alternative": "found_better_alternative",
+            "i have privacy concerns": "privacy_concerns",
+            "other": "other",
+        }
+
+        normalized_reasons = []
+        invalid_reasons = []
+
+        for reason in reasons:
+            if not isinstance(reason, str):
+                invalid_reasons.append(reason)
+                continue
+
+            reason_value = reason.strip()
+            reason_lower = reason_value.lower()
+
+            if reason_value in valid_reasons:
+                normalized_reasons.append(reason_value)
+                continue
+
+            if reason_lower in reason_label_map:
+                normalized_reasons.append(reason_label_map[reason_lower])
+                continue
+
+            if reason_lower.startswith("other:"):
+                normalized_reasons.append("other")
+                parsed_other = reason_value.split(":", 1)[1].strip()
+                if parsed_other and not other_reason:
+                    other_reason = parsed_other
+                continue
+
+            invalid_reasons.append(reason)
+
+        if normalized_reasons:
+            # Preserve order while removing duplicates.
+            normalized_reasons = list(dict.fromkeys(normalized_reasons))
+
+        if invalid_reasons:
+            return Response(
+                {"detail": "Invalid reasons provided", "invalid_reasons": invalid_reasons},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not normalized_reasons:
+            return Response(
+                {"detail": "At least one reason is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if "other" in normalized_reasons and not other_reason:
+            return Response(
+                {"detail": "other_reason is required when reason includes 'other'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_id = user.id
+        username_for_log = user.username
+        user_email = user.email
+
+        log_auth_event(
+            "delete_account",
+            request=request,
+            user=user,
+            username=username_for_log,
+            detail={
+                "reasons": normalized_reasons,
+                "other_reason": other_reason,
+            },
+        )
+
+        DeletedAccount.objects.create(
+            email=user_email,
+            reasons=normalized_reasons,
+            other_reason=other_reason if other_reason else None,
+        )
+
+        user.delete()
+
+        return Response(
+            {
+                "detail": "Account deleted successfully.",
+                "deleted_user_id": user_id,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode

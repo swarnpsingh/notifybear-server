@@ -54,3 +54,16 @@ class AuthAuditLog(models.Model):
 
     def __str__(self):
         return f"{self.event} - {self.username or self.user} @ {self.ip} [{self.timestamp}]"
+
+
+class DeletedAccount(models.Model):
+    email = models.EmailField()
+    reasons = models.JSONField(default=list)
+    other_reason = models.TextField(blank=True, null=True)
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.email} deleted on {self.deleted_at.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    class Meta:
+        ordering = ['-deleted_at']
