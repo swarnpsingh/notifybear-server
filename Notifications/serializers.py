@@ -162,6 +162,9 @@ class UserNotificationStateCompactSerializer(serializers.ModelSerializer):
         rt = obj.reaction_time
         return rt.total_seconds() if rt else None
 
+class SetPrioritySerializer(serializers.Serializer):
+    notification_id = serializers.IntegerField()
+    priority = serializers.CharField(allow_null=True, required=False)
 
 # -------------------------
 # Ingestion Serializers

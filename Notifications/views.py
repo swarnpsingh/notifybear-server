@@ -17,6 +17,7 @@ from .models import (
 )
 
 from .serializers import (
+    SetPrioritySerializer,
     UserNotificationStateSerializer,
     NotificationEventSerializer,
     IngestNotificationSerializer,
@@ -537,3 +538,26 @@ def clear_notifications(request):
         qs.filter(ml_score__lt=0.3).delete()
 
     return Response({"status": "ok"})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_priority(request):
+    serializer = SetPrioritySerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    notif_id = serializer.validated_data["notification_id"]
+    priority = serializer.validated_data.get("priority")
+
+    notif = UserNotificationState.objects.get(
+        notification_id=notif_id,
+        user=request.user
+    )
+
+    notif.manual_priority = priority  # nullable field
+    notif.save()
+
+    return Response({
+        "success": True,
+        "priority": priority,
+        "source": "user"
+    })

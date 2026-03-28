@@ -200,7 +200,11 @@ class UserNotificationState(models.Model):
         db_index=True,
         help_text="Cached ML ranking score"
     )
-    
+    manual_priority = models.CharField(
+        max_length=10,
+        null=True,
+        blank=True
+    )
     last_updated = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

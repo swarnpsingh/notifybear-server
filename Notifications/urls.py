@@ -18,6 +18,7 @@ from .views import (
     toggle_bookmark,
     bookmarked_notifications,
     clear_notifications,
+    set_priority,
 )
 
 urlpatterns = [
@@ -95,4 +96,5 @@ urlpatterns = [
     path("bookmark/", toggle_bookmark),
     path("bookmarked/", bookmarked_notifications),
     path("clear/", clear_notifications),
+    path("set-priority/", set_priority),
 ]
