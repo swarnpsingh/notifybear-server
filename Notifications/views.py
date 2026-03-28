@@ -549,7 +549,7 @@ def set_priority(request):
     priority = serializer.validated_data.get("priority")
 
     notif = UserNotificationState.objects.get(
-        notification_id=notif_id,
+        notification_event_id=notif_id,
         user=request.user
     )
 
