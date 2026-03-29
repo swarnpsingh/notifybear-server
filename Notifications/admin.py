@@ -212,6 +212,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         "id",
         "is_read",
         "ml_score",
+        "manual_priority",
         "dismissed_by",
         "is_bookmarked",
         "user_link",
