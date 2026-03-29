@@ -96,6 +96,7 @@ class UserNotificationStateSerializer(serializers.ModelSerializer):
             "dismissed_by",
             "snoozed_until",
             "ml_score",
+            "manual_priority",
             "reaction_time",
             "last_updated",
             "created_at",
