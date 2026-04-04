@@ -518,6 +518,8 @@ def bookmarked_notifications(request):
 
     return Response(serializer.data)
 
+from django.db.models import Q
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def clear_notifications(request):
@@ -528,16 +530,22 @@ def clear_notifications(request):
     qs = UserNotificationState.objects.filter(user=request.user)
 
     if clear_type == "all":
-        qs.delete()
+        deleted_count, _ = qs.delete()
 
-    elif clear_type == "time" and hours:
+    elif clear_type == "older_than" and hours:
         cutoff = timezone.now() - timedelta(hours=int(hours))
-        qs.filter(notification_event__post_time__lt=cutoff).delete()
+        deleted_count, _ = qs.filter(notification_event__post_time__lt=cutoff).delete()
 
     elif clear_type == "low_priority":
-        qs.filter(ml_score__lt=0.3).delete()
+        deleted_count, _ = qs.filter(
+            Q(manual_priority="LOW") |
+            Q(manual_priority__isnull=True, ml_score__lt=0.3)
+        ).delete()
 
-    return Response({"status": "ok"})
+    return Response({
+        "status": "ok",
+        "deleted": deleted_count
+    })
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
