@@ -39,7 +39,7 @@ class ModelRetrainer:
         X = []
         y = []
 
-        rows = list(FeatureEngineer.fetch_training_rows(user, apps=apps, lookback_days=lookback_days))
+        rows = list(FeatureEngineer.fetch_training_rows(user, apps=apps, lookback_days=lookback_days, max_samples=1000))
         for vec, label in rows:
             X.append(vec)
             y.append(label)

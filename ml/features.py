@@ -84,7 +84,7 @@ class FeatureEngineer:
         ], dtype=np.float32)
 
     @staticmethod
-    def fetch_training_rows(user, apps=None, lookback_days=30):
+    def fetch_training_rows(user, apps=None, lookback_days=30, max_samples=None):
         """
         Yield tuples (feature_vector, label) for the given user.
         """
@@ -117,7 +117,12 @@ class FeatureEngineer:
         if apps:
             qs = qs.filter(app__package_name__in=apps)
 
-        notifications = list(qs.order_by('post_time'))
+        if max_samples:
+            qs = qs.order_by('-post_time')[:max_samples]
+        else:
+            qs = qs.order_by('post_time')
+        notifications = list(qs)
+        
         if not notifications:
             return
 
@@ -131,15 +136,34 @@ class FeatureEngineer:
         
         # Subtracted 1 to exclude the current notification from the "past" count
         df['rolling_24h'] = df.rolling('1D', on='time')['id'].count().fillna(1.0) - 1.0 
-
+        count = 0
         # 4. Final loop yielding feature vectors and labels
         for i, notif in enumerate(notifications):
-            state = notif.user_states.first() if hasattr(notif, 'user_states') else None
-            label = priority_service.calculate_label(
+            if max_samples is not None and count >= max_samples:
+                break
+            state = notif.user_states.order_by('-id').first() if hasattr(notif, 'user_states') else None
+            manual_score = None
+            if state and getattr(state, "manual_priority", None) is not None:
+                if state.manual_priority == "HIGH":
+                    manual_score = 1.0
+                elif state.manual_priority == "LOW":
+                    manual_score = 0.0
+                else:
+                    manual_score = 0.5
+
+            base_label = priority_service.calculate_label(
                 notif.post_time,
-                getattr(state, 'opened_at', None),
-                getattr(state, 'dismissed_at', None),
+                getattr(state, 'opened_at', None) if state else None,
+                getattr(state, 'dismissed_at', None) if state else None,
             )
+
+            label = None
+            
+            if manual_score is not None:
+                label = manual_score
+            elif base_label is not None:
+                label = base_label
+                
             if label is None:
                 continue
 
@@ -160,8 +184,10 @@ class FeatureEngineer:
 
             vector = FeatureEngineer.extract(notif, user_stats, context)
             
-            # Target hacking replication: Force financial/OTP labels to 1.0
-            if vector[10] == 1.0 or vector[11] == 1.0:
-                label = 1.0
+            if manual_score is not None:
+                if vector[10] == 1.0 or vector[11] == 1.0:
+                    label = 1.0
                 
             yield vector, float(label)
+            
+            count += 1
