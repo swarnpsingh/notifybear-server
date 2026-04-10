@@ -198,6 +198,7 @@ class IngestNotificationSerializer(serializers.Serializer):
     # Images (base64 or URLs)
     large_icon_base64 = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     picture_base64 = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    features = serializers.DictField(required=False, allow_null=True)
 
 
 class IngestInteractionSerializer(serializers.Serializer):

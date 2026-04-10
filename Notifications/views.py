@@ -89,6 +89,22 @@ def get_user_notifications(request):
         "results": data
     })
 
+EXPECTED_FEATURES = [
+        "hour_sin", "hour_cos", "channel_ctr", "app_ctr",
+        "is_active_session", "time_since_last_notif",
+        "digit_density", "exclamation_density",
+        "title_body_ratio", "notifs_past_24h",
+        "is_otp", "is_transaction", "is_message",
+        "is_promo", "is_urgent", "text_length"
+    ]
+def validate_features(f):
+        if not isinstance(f, dict):
+            return None
+        
+        return {
+            k: float(f.get(k, 0.0))
+            for k in EXPECTED_FEATURES
+        }
 # -------------------------
 # Ingest posted notification
 # -------------------------
@@ -100,6 +116,8 @@ def ingest_notification(request):
     s = IngestNotificationSerializer(data=request.data)
     s.is_valid(raise_exception=True)
     v = s.validated_data
+    
+    features = validate_features(v.get("features"))
 
     # Get or create app
     app = _get_or_create_app(
@@ -148,6 +166,9 @@ def ingest_notification(request):
         user=request.user,
         notification_event=notif_event
     )
+    if features is not None:
+        state.features = features
+        state.save(update_fields=["features"])
 
     return Response(
         {

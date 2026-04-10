@@ -183,6 +183,7 @@ class UserNotificationState(models.Model):
         db_index=True,
         help_text="Who dismissed the notification"
     )
+    features = models.JSONField(null=True, blank=True)
     snoozed_until = models.DateTimeField(
         null=True, 
         blank=True,

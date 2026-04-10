@@ -11,6 +11,8 @@ from .models import (
     DailyAggregate,
 )
 
+import json
+
 
 # -------------------------
 # Inline Admin Classes
@@ -214,6 +216,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         "ml_score",
         "manual_priority",
         "dismissed_by",
+        "has_features",
         "is_bookmarked",
         "user_link",
         "notification_link",
@@ -239,6 +242,7 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
     readonly_fields = (
         "user",
         "notification_event",
+        "pretty_features",
         "created_at",
         "last_updated",
     )
@@ -252,6 +256,10 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
         }),
         ("ML & Scoring", {
             "fields": ("ml_score",)
+        }),
+        ("Features (Debug)", {
+            "fields": ("pretty_features",),
+            "classes": ("collapse",)
         }),
         ("Metadata", {
             "fields": ("created_at", "last_updated"),
@@ -298,6 +306,17 @@ class UserNotificationStateAdmin(admin.ModelAdmin):
                 return f"{seconds/3600:.1f}h"
         return "—"
     reaction_time_display.short_description = "Reaction Time"
+    @admin.display(description="Features")
+    def pretty_features(self, obj):
+        if not obj.features:
+            return "—"
+        return format_html(
+            "<pre style='max-height:300px; overflow:auto'>{}</pre>",
+            json.dumps(obj.features, indent=2)
+        )
+    @admin.display(boolean=True, description="Has Features")
+    def has_features(self, obj):
+        return bool(obj.features)
 
 
 # -------------------------
