@@ -7,6 +7,15 @@ from .models import AppConfig
 def app_config(request):
     config = AppConfig.objects.first()
     
+    config = AppConfig.objects.first()
+
+    if not config:
+        return Response({
+            "latest_version": "1.0.0",
+            "min_supported_version": "1.0.0",
+            "force_update_message": "Please update the app."
+        })
+
     return Response({
         "latest_version": config.latest_version,
         "min_supported_version": config.min_supported_version,
