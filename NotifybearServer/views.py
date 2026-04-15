@@ -7,8 +7,6 @@ from .models import AppConfig
 def app_config(request):
     config = AppConfig.objects.first()
     
-    config = AppConfig.objects.first()
-
     if not config:
         return Response({
             "latest_version": "1.0.0",
