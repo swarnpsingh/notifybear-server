@@ -19,10 +19,13 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from .views import app_config
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("accounts/", include("Accounts.urls")),
     path("notifications/", include("Notifications.urls")),
     path("ml/", include("ml.urls")),
     path("logs/", include("Logs.urls")),
+    path("app-config/", app_config, name="app_config"),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
