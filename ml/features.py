@@ -93,21 +93,6 @@ class FeatureEngineer:
 
         cutoff = timezone.now() - timedelta(days=lookback_days)
 
-        # 1. Optimized Batch Query for CTRs
-        stats = (
-            NotificationEvent.objects.filter(app__user=user)
-            .values('app_id', 'channel_id')
-            .annotate(
-                sent=Count('id'),
-                clicks=Count('user_states', filter=Q(user_states__opened_at__isnull=False)),
-            )
-        )
-
-        ctr_map = {}
-        for s in stats:
-            key = f"{s['app_id']}_{s['channel_id']}"
-            ctr_map[key] = (s['clicks'] / s['sent']) if s['sent'] > 0 else config.GLOBAL_OPEN_RATE_PRIOR
-
         # 2. Fetch all valid logs
         qs = (
             NotificationEvent.objects.filter(app__user=user, post_time__gte=cutoff)
@@ -125,17 +110,7 @@ class FeatureEngineer:
         
         if not notifications:
             return
-
-        # 3. Pandas Rolling Calcs
-        df = pd.DataFrame([{'id': n.id, 'time': n.post_time} for n in notifications])
-        if df.empty:
-            return
-
-        df['time'] = pd.to_datetime(df['time'])
-        df['time_diff'] = df['time'].diff().dt.total_seconds().fillna(86400.0)
-        
         # Subtracted 1 to exclude the current notification from the "past" count
-        df['rolling_24h'] = df.rolling('1D', on='time')['id'].count().fillna(1.0) - 1.0 
         count = 0
         # 4. Final loop yielding feature vectors and labels
         for i, notif in enumerate(notifications):
@@ -166,23 +141,24 @@ class FeatureEngineer:
                 
             if label is None:
                 continue
+            
+            vector = None
 
-            channel_key = f"{notif.app_id}_{notif.channel_id}"
-            app_ctr = ctr_map.get(channel_key, config.GLOBAL_OPEN_RATE_PRIOR)
+            if state and getattr(state, "has_features", False):
+                raw_features = getattr(state, "features", None)
+                
+                if isinstance(raw_features, (list, tuple)) and len(raw_features) == 16:
+                    try:
+                        vector = np.array(raw_features, dtype=np.float32)
+                    except Exception:
+                        continue
+            
+            if vector is None:
+                continue
+            if vector.shape != (16,):
+                continue
 
-            user_stats = {
-                'notifs_past_24h': float(df.iloc[i]['rolling_24h']),
-                'channel_ctr': float(app_ctr),
-                f"app_{notif.app_id}_ctr": float(app_ctr),
-            }
-
-            context = {
-                'time_since_last_notif_sec': float(df.iloc[i]['time_diff']),
-                # In a real system, you might fetch actual session states, falling back to 86400
-                'sec_since_last_action': 86400 
-            }
-
-            vector = FeatureEngineer.extract(notif, user_stats, context)
+            #vector = FeatureEngineer.extract(notif, user_stats, context)
             
             if manual_score is not None:
                 if vector[10] == 1.0 or vector[11] == 1.0:

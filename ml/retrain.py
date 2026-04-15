@@ -31,7 +31,7 @@ class ModelRetrainer:
         - Fetch historical notifications for the user (filter by apps if provided)
         - For each notification compute label via service.calculate_label
         - Drop rows where label is None
-        - Extract features with FeatureEngineer.extract
+        - Use mobile-extracted features stored in UserNotificationState
         - Train NotificationClassifier.train(X, y)
 
         Returns (metrics, file_path) where metrics contains sample counts.
@@ -39,7 +39,7 @@ class ModelRetrainer:
         X = []
         y = []
 
-        rows = list(FeatureEngineer.fetch_training_rows(user, apps=apps, lookback_days=lookback_days, max_samples=1000))
+        rows = FeatureEngineer.fetch_training_rows(user, apps=apps, lookback_days=lookback_days, max_samples=1000)
         for vec, label in rows:
             X.append(vec)
             y.append(label)
