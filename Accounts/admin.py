@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, UserProfile, AuthAuditLog, DeletedAccount
+from .models import User, UserKey, UserProfile, AuthAuditLog, DeletedAccount
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -39,3 +39,15 @@ class DeletedAccountAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+@admin.register(UserKey)
+class UserKeyAdmin(admin.ModelAdmin):
+    list_display = ("user", "short_key", "created_at")
+    search_fields = ("user__username", "user__email")
+    readonly_fields = ("created_at",)
+
+    def short_key(self, obj):
+        if not obj.wrapped_key:
+            return "-"
+        return obj.wrapped_key[:20] + "..."
+    short_key.short_description = "Wrapped Key"
