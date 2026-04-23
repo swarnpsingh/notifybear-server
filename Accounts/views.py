@@ -20,7 +20,7 @@ from django.utils.decorators import method_decorator
 from .serializers import UserSerializer, UserSignupSerializer
 from .throttles import LoginRateThrottle
 from .utils import log_auth_event
-from .models import DeletedAccount
+from .models import DeletedAccount, UserKey
 
 User = get_user_model()
 
@@ -503,3 +503,25 @@ def reset_password_page(request, uid, token):
         "uid": uid,
         "token": token
     })
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_key(request):
+    key = UserKey.objects.filter(user=request.user).first()
+
+    if not key:
+        return Response({"wrapped_key": None})
+
+    return Response({"wrapped_key": key.wrapped_key})
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def set_user_key(request):
+    wrapped_key = request.data.get("wrapped_key")
+
+    obj, _ = UserKey.objects.update_or_create(
+        user=request.user,
+        defaults={"wrapped_key": wrapped_key}
+    )
+
+    return Response({"status": "ok"})

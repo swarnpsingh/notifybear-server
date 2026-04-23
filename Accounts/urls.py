@@ -3,6 +3,7 @@ from .views import SignupView, LoginView, LogoutView, CustomTokenRefreshView
 from .views import me, GoogleLoginView, UploadProfilePhotoView, UpdateProfileView
 from .views import ForgotPasswordView, ResetPasswordView, forgot_password_page, reset_password_page
 from .views import DeleteAccountView
+from .views import get_user_key, set_user_key
 
 urlpatterns = [
     path("signup/", SignupView.as_view(), name="signup"),
@@ -20,4 +21,7 @@ urlpatterns = [
     
     path('forgot-password/', forgot_password_page, name='forgot-password-page'),
     path('reset-password/<uid>/<token>/', reset_password_page, name='reset-password-page'),
+    
+    path('get-encryptor-key/', get_user_key, name='get_encryptor_key'),
+    path('set-encryptor-key/', set_user_key, name='set_encryptor_key'),
 ]

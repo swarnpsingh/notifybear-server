@@ -67,3 +67,8 @@ class DeletedAccount(models.Model):
 
     class Meta:
         ordering = ['-deleted_at']
+
+class UserKey(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    wrapped_key = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
