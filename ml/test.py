@@ -1,10 +1,11 @@
 # test_ml_logic.py
 import numpy as np
+import pandas as pd
 from ml.model import NotificationClassifier
 from ml.features import FeatureEngineer
 
 # 1. Initialize the classifier
-classifier = NotificationClassifier(model_path="local_test_model.pkl")
+classifier = NotificationClassifier()
 
 # 2. Create a "Mock" notification object to test extraction
 class MockNotification:
