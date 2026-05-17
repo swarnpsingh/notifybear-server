@@ -3,6 +3,8 @@ import logging
 import os
 from django.utils import timezone
 
+from ml.models import TrainingFeature
+
 from .model import NotificationClassifier
 from .features import FeatureEngineer
 
@@ -15,14 +17,14 @@ INIT_MODEL_PATH = os.path.join(
 )
 
 class ModelRetrainer:
-    MIN_RETRAIN_INTERVAL = timedelta(hours=6)
-
+    MIN_NEW_FEATURES = 50
+    
     @staticmethod
-    def should_retrain(user):
-        last = getattr(user, "last_model_retrain", None)
-        if last and (timezone.now() - last) < ModelRetrainer.MIN_RETRAIN_INTERVAL:
-            return False, "recently retrained"
-        return True, "ok"
+    def should_retrain_from_features(user):
+        unused_count = TrainingFeature.objects.filter(user=user, used_for_training=False).count()
+        if unused_count < ModelRetrainer.MIN_NEW_FEATURES:
+            return False, f"only {unused_count} new features"
+        return True, "sufficient new features"
 
     @staticmethod
     def train_model(user, apps=None, lookback_days=30):
@@ -40,7 +42,9 @@ class ModelRetrainer:
         y = []
 
         rows = FeatureEngineer.fetch_training_rows(user, apps=apps, lookback_days=lookback_days, max_samples=1000)
-        for vec, label in rows:
+        used_ids = []
+        for row_id, vec, label in rows:
+            used_ids.append(row_id)
             X.append(vec)
             y.append(label)
 
@@ -48,28 +52,24 @@ class ModelRetrainer:
 
         clf = NotificationClassifier()
         if len(X) < 50:
-            logger.info("Not enough data (%d). Returning cold-start model.", len(X))
-
             if os.path.exists(INIT_MODEL_PATH):
-                return metrics, INIT_MODEL_PATH
-            else:
-                logger.error("init.onnx not found!")
                 return metrics, None
+            logger.error("init.onnx not found!")
+            return metrics, None
 
         clf.train(X, y)
+        TrainingFeature.objects.filter(
+            id__in=used_ids
+        ).update(
+            used_for_training=True
+        )
 
         # Update user's last retrain timestamp when possible
         try:
             # last_model_retrain lives on the user's profile object
             user.profile.last_model_retrain = timezone.now()
             user.profile.save()
-        except Exception:
-            logger.debug("Profile not found or could not persist last_model_retrain")
+        except Exception as e:
+            logger.debug("Profile not found or could not persist last_model_retrain: "+str(e))
 
-        # Prefer ONNX if exported, else pickle
-        if os.path.exists(clf.onnx_path):
-            return metrics, clf.onnx_path
-        if os.path.exists(clf.model_path):
-            return metrics, clf.model_path
-
-        return metrics, None
+        return metrics, clf
