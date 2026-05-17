@@ -21,3 +21,9 @@ class TrainingFeature(models.Model):
     synced_at = models.DateTimeField(auto_now_add=True)
 
     used_for_training = models.BooleanField(default=False)
+    
+    class Meta:
+        unique_together = (
+            "user",
+            "notification_key"
+        )
