@@ -1,7 +1,13 @@
+import os
+
 import joblib
 import numpy as np
 import logging
 from sklearn.ensemble import HistGradientBoostingClassifier
+
+
+import tempfile
+import uuid
 
 # ONNX Imports
 try:
@@ -16,9 +22,7 @@ from . import config
 logger = logging.getLogger(__name__)
 
 class NotificationClassifier:
-    def __init__(self, model_path="notification_model.pkl"):
-        self.model_path = model_path
-        self.onnx_path = model_path.replace(".pkl", ".onnx")
+    def __init__(self):
         
         # Classifier with balanced weights for extreme data skew
         self.model = HistGradientBoostingClassifier(
@@ -31,6 +35,11 @@ class NotificationClassifier:
             class_weight='balanced'
         )
         self.is_trained = False
+        
+        uid = str(uuid.uuid4())
+        temp_dir = tempfile.gettempdir()
+        self.model_path = os.path.join(temp_dir,f"{uid}.pkl")
+        self.onnx_path = os.path.join(temp_dir,f"{uid}.onnx")
 
     def train(self, X, y):
         X = np.array(X, dtype=np.float32)
@@ -51,15 +60,6 @@ class NotificationClassifier:
         self.save()
         self.save_onnx()
 
-    def predict(self, feature_vector):
-        if not self.is_trained: return 0.5
-        if feature_vector.ndim == 1:
-            feature_vector = feature_vector.reshape(1, -1)
-            
-        # [0][1] gets the probability of class 1.0 (Clicked)
-        prob = self.model.predict_proba(feature_vector)[0][1]
-        return float(prob)
-
     def save(self):
         joblib.dump(self.model, self.model_path)
         logger.info(f"Python model saved to {self.model_path}")
@@ -78,12 +78,12 @@ class NotificationClassifier:
             logger.info(f"ONNX model saved to {self.onnx_path}")
         except Exception as e:
             logger.error(f"Failed to export ONNX: {e}")
+    
+    def cleanup(self):
 
-    def load(self):
-        try:
-            self.model = joblib.load(self.model_path)
-            self.is_trained = True
-            logger.info("Model loaded successfully")
-        except FileNotFoundError:
-            logger.warning("No model found. Cold start.")
-            self.is_trained = False
+        for path in [self.model_path, self.onnx_path]:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
