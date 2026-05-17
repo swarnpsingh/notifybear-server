@@ -4,7 +4,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.http import FileResponse
+from ml.models import TrainingFeature
 from ml.retrain import INIT_MODEL_PATH, ModelRetrainer
+from ml.serializers import SyncTrainingFeaturesSerializer
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -64,3 +66,26 @@ def train_model(request):
     response.close = cleanup_close
     
     return response
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def sync_training_features(request):
+
+    serializer = SyncTrainingFeaturesSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    rows = []
+    for item in serializer.validated_data["features"]:
+        rows.append(
+            TrainingFeature(
+                user=request.user,
+                package_name=item["package_name"],
+                notification_key=item["notification_key"],
+                feature_version=item["feature_version"],
+                features=item["features"],
+                label=item.get("label")
+            )
+        )
+
+    TrainingFeature.objects.bulk_create(rows, ignore_conflicts=True)
+
+    return Response({"saved": len(rows)})
