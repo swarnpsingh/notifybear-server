@@ -86,6 +86,22 @@ def sync_training_features(request):
             )
         )
 
-    TrainingFeature.objects.bulk_create(rows, ignore_conflicts=True)
+    #TrainingFeature.objects.bulk_create(rows, ignore_conflicts=True)
+    
+    saved = 0
 
-    return Response({"saved": len(rows)})
+    for item in serializer.validated_data["features"]:
+        TrainingFeature.objects.update_or_create(
+            user=request.user,
+            package_name=item["package_name"],
+            notification_key=item["notification_key"],
+            feature_version=item["feature_version"],
+            defaults={
+                "features": item["features"],
+                "label": item.get("label")
+            }
+        )
+
+        saved += 1
+
+    return Response({"saved": saved})
