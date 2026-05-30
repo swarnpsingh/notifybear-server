@@ -23,7 +23,14 @@ class TrainingFeature(models.Model):
     used_for_training = models.BooleanField(default=False)
     
     class Meta:
-        unique_together = (
-            "user",
-            "notification_key"
-        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "package_name",
+                    "notification_key",
+                    "feature_version"
+                ],
+                name="unique_training_feature"
+            )
+        ]
