@@ -12,8 +12,8 @@ class TrainingFeatureAdmin(admin.ModelAdmin):
         "package_name",
         "feature_version",
         "label",
+        "original_score",
         "used_for_training",
-        "created_at",
     )
 
     list_filter = (
@@ -30,6 +30,7 @@ class TrainingFeatureAdmin(admin.ModelAdmin):
 
     readonly_fields = (
         "created_at",
+        "original_score",
         "synced_at",
     )
 
