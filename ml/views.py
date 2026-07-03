@@ -82,7 +82,8 @@ def sync_training_features(request):
                 notification_key=item["notification_key"],
                 feature_version=item["feature_version"],
                 features=item["features"],
-                label=item.get("label")
+                label=item.get("label"),
+                original_score=item.get("original_score")
             )
         )
 
@@ -98,7 +99,8 @@ def sync_training_features(request):
             feature_version=item["feature_version"],
             defaults={
                 "features": item["features"],
-                "label": item.get("label")
+                "label": item.get("label"),
+                "original_score": item.get("original_score")
             }
         )
 

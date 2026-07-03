@@ -10,6 +10,11 @@ class TrainingFeaturePayloadSerializer(serializers.Serializer):
         min_length=16,
         max_length=16,
     )
+    
+    original_score = serializers.FloatField(
+        required=False,
+        allow_null=True
+    )
 
     label = serializers.FloatField(
         required=False,

@@ -9,6 +9,8 @@ class TrainingFeature(models.Model):
     feature_version = models.IntegerField(default=1)
 
     features = models.JSONField()
+    
+    original_score = models.FloatField(null=True, blank=True)
 
     label = models.FloatField(null=True, blank=True)
 
