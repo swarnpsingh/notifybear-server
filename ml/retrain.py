@@ -53,6 +53,7 @@ class ModelRetrainer:
         clf = NotificationClassifier()
         if len(X) < 50:
             if os.path.exists(INIT_MODEL_PATH):
+                logger.error("init.onnx returned due to insufficient training data")
                 return metrics, None
             logger.error("init.onnx not found!")
             return metrics, None
