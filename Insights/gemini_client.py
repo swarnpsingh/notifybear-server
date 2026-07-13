@@ -64,10 +64,12 @@ def _build_prompt(total, high, medium, low, notifications):
         "Write:",
         "1. `summary`: 1-2 sentences summarizing the user's notification day - volume and the dominant "
         "theme/pattern. Be specific, not generic filler.",
-        "2. `insights`: up to 3 items, ONLY for notifications that genuinely need a reply, confirmation, "
-        "or action from the user. Reuse the exact `notificationId` from the list above - never invent one. "
-        "Reword `title`/`body` to make the required action clear and concise. "
-        "If nothing needs action, return an empty list.",
+        "2. `insights`: notifications that genuinely need a reply, confirmation, or action from the "
+        "user - at most 3, but 3 is a ceiling, not a target. Do NOT pad the list to reach 3: include an "
+        "item only if it truly requires action. It is normal and expected for this list to contain 0, "
+        "1, or 2 items - most days will not have 3 genuinely actionable notifications. Reuse the exact "
+        "`notificationId` from the list above - never invent one. Reword `title`/`body` to make the "
+        "required action clear and concise.",
         "",
         "Return JSON only, matching the given schema.",
     ]
