@@ -48,9 +48,13 @@ INSTALLED_APPS = [
     'Accounts',
     'Notifications',
     'ml',
+    'Insights',
     'Logs.apps.LogsConfig',
     'corsheaders',
 ]
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -68,6 +72,7 @@ REST_FRAMEWORK = {
         "anon": "100/hour",
         "login": "25/minute",
         "notif_ingest": "2000/hour",
+        "daily_insights": "20/day",
     },
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
