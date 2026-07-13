@@ -27,6 +27,7 @@ urlpatterns = [
     path("notifications/", include("Notifications.urls")),
     path("ml/", include("ml.urls")),
     path("insights/", include("Insights.urls")),
+    path("rules/", include("Rules.urls")),
     path("logs/", include("Logs.urls")),
     path("app-config/", app_config, name="app_config"),
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

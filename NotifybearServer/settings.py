@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'Notifications',
     'ml',
     'Insights',
+    'Rules',
     'Logs.apps.LogsConfig',
     'corsheaders',
 ]
@@ -73,6 +74,7 @@ REST_FRAMEWORK = {
         "login": "25/minute",
         "notif_ingest": "2000/hour",
         "daily_insights": "20/day",
+        "rules_generate": "10/day",
     },
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
