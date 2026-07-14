@@ -65,11 +65,11 @@ def _build_prompt(total, high, medium, low, notifications):
         "1. `summary`: 1-2 sentences summarizing the user's notification day - volume and the dominant "
         "theme/pattern. Be specific, not generic filler.",
         "2. `insights`: notifications that genuinely need a reply, confirmation, or action from the "
-        "user - at most 3, but 3 is a ceiling, not a target. Do NOT pad the list to reach 3: include an "
-        "item only if it truly requires action. It is normal and expected for this list to contain 0, "
-        "1, or 2 items - most days will not have 3 genuinely actionable notifications. Reuse the exact "
+        "user - include EVERY notification that truly requires action, however many that is, but do "
+        "NOT pad the list: an item belongs here only if it truly requires action. It is normal and "
+        "expected for this list to be empty or short on quiet days. Reuse the exact "
         "`notificationId` from the list above - never invent one. Reword `title`/`body` to make the "
-        "required action clear and concise.",
+        "required action clear and concise. Never include the same notificationId twice.",
         "",
         "Return JSON only, matching the given schema.",
     ]
@@ -111,7 +111,15 @@ def generate_insights(total, high, medium, low, notifications):
     if not parsed.summary or not parsed.summary.strip():
         raise GeminiGenerationError("Gemini returned an empty summary")
 
+    # No count cap anymore (the app scrolls the list internally) - but the
+    # ids must be real and unique: drop invented ids and duplicates.
     valid_ids = {n["notificationId"] for n in notifications}
-    parsed.insights = [i for i in parsed.insights if i.notificationId in valid_ids][:3]
+    seen = set()
+    deduped = []
+    for i in parsed.insights:
+        if i.notificationId in valid_ids and i.notificationId not in seen:
+            seen.add(i.notificationId)
+            deduped.append(i)
+    parsed.insights = deduped
 
     return parsed
