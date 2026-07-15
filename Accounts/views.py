@@ -20,7 +20,7 @@ from django.utils.decorators import method_decorator
 from .serializers import UserSerializer, UserSignupSerializer
 from .throttles import LoginRateThrottle
 from .utils import log_auth_event
-from .models import DeletedAccount, UserKey
+from .models import DeletedAccount, UserKey, UserStreak
 
 User = get_user_model()
 
@@ -513,6 +513,43 @@ def get_user_key(request):
         return Response({"wrapped_key": None})
 
     return Response({"wrapped_key": key.wrapped_key})
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def sync_streak(request):
+    """
+    Merge-style sync: the client sends its local streak state and gets
+    back the authoritative merged state. Whichever side has the LATER
+    last_streak_date wins (yyyy-MM-dd strings compare correctly as text);
+    on the same date the higher count wins, so a device that incremented
+    offline never loses progress to a stale copy from another device.
+    A client with no local state (fresh login) sends an empty date and
+    simply receives the server's state back.
+    """
+    client_count = request.data.get("streak_count") or 0
+    client_date = (request.data.get("last_streak_date") or "").strip()
+
+    try:
+        client_count = max(0, int(client_count))
+    except (TypeError, ValueError):
+        client_count = 0
+    if len(client_date) > 10:
+        client_date = ""
+
+    streak, _ = UserStreak.objects.get_or_create(user=request.user)
+
+    if client_date > streak.last_streak_date:
+        streak.streak_count = client_count
+        streak.last_streak_date = client_date
+        streak.save()
+    elif client_date == streak.last_streak_date and client_count > streak.streak_count:
+        streak.streak_count = client_count
+        streak.save()
+
+    return Response({
+        "streak_count": streak.streak_count,
+        "last_streak_date": streak.last_streak_date,
+    })
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])

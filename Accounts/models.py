@@ -72,3 +72,21 @@ class UserKey(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     wrapped_key = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class UserStreak(models.Model):
+    """
+    Daily streak state mirrored from the app. last_streak_date is the
+    device's LOCAL calendar day (yyyy-MM-dd) as reported by the client -
+    it is stored as an opaque string on purpose, never reinterpreted in
+    server time, so a user near midnight doesn't lose a day to timezone
+    math. Break detection (streak reads 0 after a missed day) stays
+    client-side at read time.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="streak")
+    streak_count = models.IntegerField(default=0)
+    last_streak_date = models.CharField(max_length=10, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username}: {self.streak_count} (last {self.last_streak_date or '-'})"

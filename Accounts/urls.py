@@ -4,6 +4,7 @@ from .views import me, GoogleLoginView, UploadProfilePhotoView, UpdateProfileVie
 from .views import ForgotPasswordView, ResetPasswordView, forgot_password_page, reset_password_page
 from .views import DeleteAccountView
 from .views import get_user_key, set_user_key
+from .views import sync_streak
 
 urlpatterns = [
     path("signup/", SignupView.as_view(), name="signup"),
@@ -24,4 +25,6 @@ urlpatterns = [
     
     path('get-encryptor-key/', get_user_key, name='get_encryptor_key'),
     path('set-encryptor-key/', set_user_key, name='set_encryptor_key'),
+
+    path('streak/sync/', sync_streak, name='sync_streak'),
 ]

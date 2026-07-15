@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, UserKey, UserProfile, AuthAuditLog, DeletedAccount
+from .models import User, UserKey, UserProfile, AuthAuditLog, DeletedAccount, UserStreak
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -39,6 +39,14 @@ class DeletedAccountAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+@admin.register(UserStreak)
+class UserStreakAdmin(admin.ModelAdmin):
+    list_display = ("user", "streak_count", "last_streak_date", "updated_at")
+    search_fields = ("user__username", "user__email")
+    ordering = ("-streak_count",)
+    readonly_fields = ("updated_at",)
+
 
 @admin.register(UserKey)
 class UserKeyAdmin(admin.ModelAdmin):
