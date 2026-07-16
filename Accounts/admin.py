@@ -42,7 +42,7 @@ class DeletedAccountAdmin(admin.ModelAdmin):
 
 @admin.register(UserStreak)
 class UserStreakAdmin(admin.ModelAdmin):
-    list_display = ("user", "streak_count", "last_streak_date", "updated_at")
+    list_display = ("user", "streak_count", "longest_streak", "freeze_count", "last_streak_date", "updated_at")
     search_fields = ("user__username", "user__email")
     ordering = ("-streak_count",)
     readonly_fields = ("updated_at",)

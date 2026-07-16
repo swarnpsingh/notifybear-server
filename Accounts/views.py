@@ -528,6 +528,8 @@ def sync_streak(request):
     """
     client_count = request.data.get("streak_count") or 0
     client_date = (request.data.get("last_streak_date") or "").strip()
+    client_freeze = request.data.get("freeze_count") or 0
+    client_longest = request.data.get("longest_streak") or 0
 
     try:
         client_count = max(0, int(client_count))
@@ -535,20 +537,51 @@ def sync_streak(request):
         client_count = 0
     if len(client_date) > 10:
         client_date = ""
+    try:
+        # Defensively capped server-side too, in case a client is stale or
+        # sends a bad value - the bank should never exceed the app's cap.
+        client_freeze = max(0, min(2, int(client_freeze)))
+    except (TypeError, ValueError):
+        client_freeze = 0
+    try:
+        client_longest = max(0, int(client_longest))
+    except (TypeError, ValueError):
+        client_longest = 0
 
     streak, _ = UserStreak.objects.get_or_create(user=request.user)
+
+    # Monotonic, high-water mark - independent of which side's date wins.
+    # Folding in client_count too makes this self-healing for a client that
+    # hasn't started sending longest_streak yet, or a freshly-migrated row
+    # that still defaults to 0.
+    streak.longest_streak = max(streak.longest_streak, client_longest, client_count)
+
+    # freeze_count is NOT tied to streak_count/last_streak_date changing -
+    # the 14-day accrual grant (see StreakManager.maybeGrantFreezes) can fire
+    # on a day the streak itself doesn't move at all. So it's adopted
+    # whenever the client isn't behind (same day or newer), independent of
+    # whether the count/date themselves need updating - not gated behind
+    # the "same date needs a higher count" tie-break used for streak_count.
+    if client_date >= streak.last_streak_date:
+        streak.freeze_count = client_freeze
 
     if client_date > streak.last_streak_date:
         streak.streak_count = client_count
         streak.last_streak_date = client_date
-        streak.save()
     elif client_date == streak.last_streak_date and client_count > streak.streak_count:
         streak.streak_count = client_count
-        streak.save()
+    # else: client's date is strictly behind - streak_count/last_streak_date
+    # stay as they are; longest_streak was already folded in above, and
+    # freeze_count is intentionally left untouched too since a client
+    # that's behind on the date has no basis for a fresher freeze bank.
+
+    streak.save()
 
     return Response({
         "streak_count": streak.streak_count,
         "last_streak_date": streak.last_streak_date,
+        "freeze_count": streak.freeze_count,
+        "longest_streak": streak.longest_streak,
     })
 
 @api_view(['POST'])

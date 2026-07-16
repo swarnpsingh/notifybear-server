@@ -86,6 +86,14 @@ class UserStreak(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="streak")
     streak_count = models.IntegerField(default=0)
     last_streak_date = models.CharField(max_length=10, blank=True, default="")
+    # All-time best streak_count - monotonic, survives a break (unlike
+    # streak_count itself, which resets). Merged as max() unconditionally,
+    # independent of which side's last_streak_date is newer.
+    longest_streak = models.IntegerField(default=0)
+    # Freeze-token bank (see StreakManager.maybeGrantFreezes on the client) -
+    # NOT monotonic, so it merges atomically with whichever side wins the
+    # streak_count/last_streak_date merge rather than via max().
+    freeze_count = models.IntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
