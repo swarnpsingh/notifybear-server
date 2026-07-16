@@ -528,8 +528,18 @@ def sync_streak(request):
     """
     client_count = request.data.get("streak_count") or 0
     client_date = (request.data.get("last_streak_date") or "").strip()
-    client_freeze = request.data.get("freeze_count") or 0
     client_longest = request.data.get("longest_streak") or 0
+
+    # freeze_count needs to distinguish "an old app that doesn't know about
+    # this field at all" from "a current app reporting a genuinely empty
+    # bank" - both look like 0 if read with a plain `or 0`, but only the
+    # latter should ever be allowed to overwrite the server's value (see
+    # the freeze_count merge below, which isn't a max() and would otherwise
+    # let an old client silently zero out freezes a newer client already
+    # earned on this account).
+    raw_freeze = request.data.get("freeze_count")
+    freeze_sent = raw_freeze is not None
+    client_freeze = raw_freeze or 0
 
     try:
         client_count = max(0, int(client_count))
@@ -543,6 +553,7 @@ def sync_streak(request):
         client_freeze = max(0, min(2, int(client_freeze)))
     except (TypeError, ValueError):
         client_freeze = 0
+        freeze_sent = False
     try:
         client_longest = max(0, int(client_longest))
     except (TypeError, ValueError):
@@ -562,7 +573,7 @@ def sync_streak(request):
     # whenever the client isn't behind (same day or newer), independent of
     # whether the count/date themselves need updating - not gated behind
     # the "same date needs a higher count" tie-break used for streak_count.
-    if client_date >= streak.last_streak_date:
+    if freeze_sent and client_date >= streak.last_streak_date:
         streak.freeze_count = client_freeze
 
     if client_date > streak.last_streak_date:
