@@ -29,6 +29,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     initials = serializers.ReadOnlyField()
+    # Top-level (not nested in profile) so the app can read it without a
+    # null-profile guard - and it automatically rides every login response
+    # and accounts/me/, which all serialize through this class.
+    tutorial_completed = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -40,7 +44,12 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "initials",
             "profile",
+            "tutorial_completed",
         ]
+
+    def get_tutorial_completed(self, obj):
+        profile = getattr(obj, "profile", None)
+        return bool(profile and profile.tutorial_completed)
 
 class UserSignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)

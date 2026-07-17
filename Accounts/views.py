@@ -20,7 +20,7 @@ from django.utils.decorators import method_decorator
 from .serializers import UserSerializer, UserSignupSerializer
 from .throttles import LoginRateThrottle
 from .utils import log_auth_event
-from .models import DeletedAccount, UserKey, UserStreak
+from .models import DeletedAccount, UserKey, UserProfile, UserStreak
 
 User = get_user_model()
 
@@ -606,3 +606,17 @@ def set_user_key(request):
     )
 
     return Response({"status": "ok"})
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def complete_tutorial(request):
+    """
+    Marks the first-login coach-mark tour as done for this user. Idempotent
+    on purpose: the app fires it fire-and-forget (retrying on later launches
+    if it failed), and manual replays from Settings call it again harmlessly.
+    """
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    if not profile.tutorial_completed:
+        profile.tutorial_completed = True
+        profile.save(update_fields=["tutorial_completed"])
+    return Response({"tutorial_completed": True})

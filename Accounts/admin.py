@@ -9,7 +9,8 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user',)
+    list_display = ('user', 'tutorial_completed',)
+    list_filter = ('tutorial_completed',)
     search_fields = ('user__username', 'user__email',)
 
 @admin.register(AuthAuditLog)

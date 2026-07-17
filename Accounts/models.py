@@ -32,6 +32,10 @@ class UserProfile(models.Model):
     dp = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     last_model_retrain = models.DateTimeField(null=True, blank=True)
     address = models.TextField(blank=True, null=True)
+    # Whether this user has seen (or skipped) the first-login coach-mark
+    # tour in the app. Per-user, not per-device, so a user who did it on
+    # one phone never sees it again on another.
+    tutorial_completed = models.BooleanField(default=False)
     
     def __str__(self):
         return f"{self.user.username}'s Profile"

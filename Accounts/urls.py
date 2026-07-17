@@ -5,6 +5,7 @@ from .views import ForgotPasswordView, ResetPasswordView, forgot_password_page, 
 from .views import DeleteAccountView
 from .views import get_user_key, set_user_key
 from .views import sync_streak
+from .views import complete_tutorial
 
 urlpatterns = [
     path("signup/", SignupView.as_view(), name="signup"),
@@ -27,4 +28,6 @@ urlpatterns = [
     path('set-encryptor-key/', set_user_key, name='set_encryptor_key'),
 
     path('streak/sync/', sync_streak, name='sync_streak'),
+
+    path('tutorial/complete/', complete_tutorial, name='complete_tutorial'),
 ]
